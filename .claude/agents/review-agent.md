@@ -55,7 +55,9 @@ tools: Read, Grep, Glob, LS, Bash
 输入必须包含总控创建的 `TASK_ID`。返回前把不超过 1200 个中文字符的摘要写入共享交接，禁止创建新 Task ID：
 
 ```bash
-.claude/skills/pm-orchestrator/scripts/pm-handoff.sh write "$TASK_ID" review < /tmp/review-handoff.md
+HANDOFF_TOOL=${PM_HANDOFF_TOOL:-"$HOME/.claude/skills/pm-orchestrator/scripts/pm-handoff.sh"}
+[ -x .claude/skills/pm-orchestrator/scripts/pm-handoff.sh ] && HANDOFF_TOOL=.claude/skills/pm-orchestrator/scripts/pm-handoff.sh
+"$HANDOFF_TOOL" write "$TASK_ID" review < /tmp/review-handoff.md
 ```
 
 Bash 只用于只读 Git 检查和 handoff 工具，不得借此修改业务代码。

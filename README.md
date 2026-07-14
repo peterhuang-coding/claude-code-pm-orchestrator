@@ -2,19 +2,21 @@
 
 Reusable Claude Code commands, Agents, worktree routing, and persistent PM handoffs for multi-project development.
 
-## Install Into A Project
+## Install Once For Every Project
 
-From the target project root:
+From this repository:
 
 ```bash
-rsync -a --exclude '*.bak.*' /path/to/this-repo/.claude/ .claude/
-chmod +x .claude/skills/pm-orchestrator/scripts/*.sh
+./.claude/skills/pm-orchestrator/scripts/install-global.sh
 ```
+
+This installs only the PM orchestrator commands, agents, templates, and skill into `~/.claude`. It does not modify `~/.claude/settings.json` or credentials. A project-local copy remains supported and takes precedence.
 
 ## Start Claude Code
 
 ```bash
-./.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
+cd /path/to/any-project
+$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
 ```
 
 Then run `/leader-task <your request>`. To recover without resuming an oversized chat, start a new Claude Code session in the original project/worktree and run `/leader-resume`, `/leader-resume <Task ID>`, or `/leader-resume path/to/legacy-handoff.md`.

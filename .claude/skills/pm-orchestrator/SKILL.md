@@ -137,9 +137,10 @@ Doc Agent 输出 checklist 和汇报口径
 从项目根目录使用：
 
 ```bash
-HANDOFF_TOOL=.claude/skills/pm-orchestrator/scripts/pm-handoff.sh
-TASK_ID=$($HANDOFF_TOOL new <short-name>)
-$HANDOFF_TOOL list
+HANDOFF_TOOL=${PM_HANDOFF_TOOL:-"$HOME/.claude/skills/pm-orchestrator/scripts/pm-handoff.sh"}
+[ -x .claude/skills/pm-orchestrator/scripts/pm-handoff.sh ] && HANDOFF_TOOL=.claude/skills/pm-orchestrator/scripts/pm-handoff.sh
+TASK_ID=$("$HANDOFF_TOOL" new <short-name>)
+"$HANDOFF_TOOL" list
 ```
 
 - Git 项目写入 `<git-common-dir>/pm-handoffs/<task-id>/`。不同项目天然隔离，同一项目的所有 worktree 共享状态。
@@ -158,17 +159,17 @@ Leader 必须在以下时点立即重写 `leader.md`，不能等任务结束：
 5. 准备读取大量输出、切换阶段、结束会话或怀疑上下文过长前。
 6. 最终回复用户前。
 
-写入格式使用 `.claude/templates/leader-handoff.md`，并执行：
+写入格式优先使用项目内 `.claude/templates/leader-handoff.md`，不存在时使用 `$HOME/.claude/templates/leader-handoff.md`，并执行：
 
 ```bash
-$HANDOFF_TOOL write "$TASK_ID" leader < /tmp/leader-handoff.md
-test -s "$($HANDOFF_TOOL path "$TASK_ID" leader)"
+"$HANDOFF_TOOL" write "$TASK_ID" leader < /tmp/leader-handoff.md
+test -s "$("$HANDOFF_TOOL" path "$TASK_ID" leader)"
 ```
 
 可以用 Write 工具生成临时 Markdown；不要把密钥放进文件。完成任务时先写最终 handoff、验证非空，再执行：
 
 ```bash
-$HANDOFF_TOOL complete "$TASK_ID"
+"$HANDOFF_TOOL" complete "$TASK_ID"
 ```
 
 没有非空 `leader.md` 时禁止声称任务完成。
@@ -178,16 +179,16 @@ $HANDOFF_TOOL complete "$TASK_ID"
 独立 Agent 在返回前必须写入自己的角色文件：
 
 ```bash
-$HANDOFF_TOOL write "$TASK_ID" <agent-role> < /tmp/agent-handoff.md
+"$HANDOFF_TOOL" write "$TASK_ID" <agent-role> < /tmp/agent-handoff.md
 ```
 
 角色名必须唯一，例如 `product`、`tech`、`dev-ui`、`dev-gameplay`、`test`。Agent 输出目标不超过 1200 个中文字符，只包含结论、证据路径、commit、验证和下一步。
 
 ### 8.4 恢复流程
 
-收到“恢复上次任务 / 继续 / resume”时，优先使用 `/leader-resume [Task ID]`，并先运行 `$HANDOFF_TOOL list`：
+收到“恢复上次任务 / 继续 / resume”时，优先使用 `/leader-resume [Task ID]`，并先运行 `"$HANDOFF_TOOL" list`：
 
-- 只有一个活动任务：直接 `$HANDOFF_TOOL read`。
+- 只有一个活动任务：直接 `"$HANDOFF_TOOL" read`。
 - 多个活动任务：列出 Task ID，让用户指定；禁止猜测。
 - 旧交接文档尚无 Task ID：使用 `/leader-resume <handoff-path>` 导入；保留原文件，新建 `legacy-resume` Task ID，先做受限摘要再用 Git 校准，禁止把超大旧文档全文装入上下文。
 - 读完 handoff 后用 `git status --short`、`git branch --all`、`git log --oneline --decorate -20` 和 `git worktree list` 校准磁盘事实。
@@ -247,11 +248,11 @@ git worktree add ../<project>-test -b task/test-<short-name>
 git worktree add ../<project>-risk -b task/risk-<short-name>
 git worktree add ../<project>-dev -b task/dev-<short-name>
 
-cd ../<project>-product && ./.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
-cd ../<project>-tech && ./.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
-cd ../<project>-test && ./.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
-cd ../<project>-risk && ./.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
-cd ../<project>-dev && ./.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
+(cd ../<project>-product && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
+(cd ../<project>-tech && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
+(cd ../<project>-test && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
+(cd ../<project>-risk && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
+(cd ../<project>-dev && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
 ```
 
 启动脚本会忽略外部遗留的 `ANTHROPIC_BASE_URL`，清除冲突 token/effort 变量，并把主模型、Haiku/Sonnet/Opus 默认模型和子 Agent 模型全部钉到 `glm-5.2`。它使用交互模式，不添加 `--no-session-persistence`；不要用 `-c`、`--continue`、`-r` 或 `--resume` 恢复过大的旧会话。中转站 base URL 默认使用 `https://api.sfkey.cn`；如果应用要求 `/v1`，启动时设置 `SFKEY_BASE_URL=https://api.sfkey.cn/v1`。不要把 API key 写进 skill、command、template 或仓库文件。

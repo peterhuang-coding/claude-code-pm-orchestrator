@@ -3,6 +3,8 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 LAUNCHER="$SCRIPT_DIR/../.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh"
+LAUNCHER_DIR=$(CDPATH= cd -- "$(dirname -- "$LAUNCHER")" && pwd)
+LAUNCHER="$LAUNCHER_DIR/launch-claude-glm.sh"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -30,6 +32,8 @@ OUT=${CLAUDE_LAUNCH_TEST_OUT:?}
   echo "CLAUDE_CODE_SUBAGENT_MODEL=${CLAUDE_CODE_SUBAGENT_MODEL-<unset>}"
   echo "CLAUDE_MODEL=${CLAUDE_MODEL-<unset>}"
   echo "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=${CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY-<unset>}"
+  echo "PM_HANDOFF_TOOL=${PM_HANDOFF_TOOL-<unset>}"
+  echo "PM_CLAUDE_LAUNCHER=${PM_CLAUDE_LAUNCHER-<unset>}"
   printf 'ARGS='
   printf '<%s>' "$@"
   printf '\n'
@@ -59,6 +63,8 @@ grep -Fxq 'ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.2' "$OUT" || fail "Opus model was 
 grep -Fxq 'CLAUDE_CODE_SUBAGENT_MODEL=glm-5.2' "$OUT" || fail "subagent model was not pinned"
 grep -Fxq 'CLAUDE_MODEL=glm-5.2' "$OUT" || fail "Claude model was not pinned"
 grep -Fxq 'CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=6' "$OUT" || fail "concurrency override was lost"
+grep -Fxq "PM_HANDOFF_TOOL=$(dirname "$LAUNCHER")/pm-handoff.sh" "$OUT" || fail "handoff tool path was not exported"
+grep -Fxq "PM_CLAUDE_LAUNCHER=$LAUNCHER" "$OUT" || fail "launcher path was not exported"
 grep -Fxq 'ARGS=<--model><glm-5.2><--permission-mode><bypassPermissions><--name><test-session>' "$OUT" || fail "Claude arguments were incorrect"
 
 echo "PASS: Claude GLM launcher"

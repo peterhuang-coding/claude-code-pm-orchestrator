@@ -18,7 +18,8 @@ require_pattern '强制 checkpoint' '.claude/commands/leader-task.md'
 require_pattern 'pm-handoff\.sh' '.claude/commands/leader-task.md'
 require_pattern 'TASK_ID' '.claude/commands/leader-task.md'
 require_pattern 'complete "?\$TASK_ID"?' '.claude/commands/leader-task.md'
-require_pattern 'HANDOFF_TOOL=.*pm-handoff\.sh' '.claude/commands/leader-resume.md'
+require_pattern 'PM_HANDOFF_TOOL' '.claude/commands/leader-resume.md'
+require_pattern '\$HOME/\.claude/skills/pm-orchestrator/scripts/pm-handoff\.sh' '.claude/commands/leader-resume.md'
 require_pattern '\$HANDOFF_TOOL list' '.claude/commands/leader-resume.md'
 require_pattern 'git worktree list' '.claude/commands/leader-resume.md'
 require_pattern 'TASK_ID' '.claude/commands/leader-resume.md'
@@ -33,12 +34,14 @@ require_pattern 'Task ID' '.claude/templates/leader-handoff.md'
 
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-handoff.sh" ] || fail "pm-handoff.sh is not executable"
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh" ] || fail "launch-claude-glm.sh is not executable"
+[ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/install-global.sh" ] || fail "install-global.sh is not executable"
 
 FOUND=0
 for AGENT in "$ROOT"/.claude/agents/*.md; do
   FOUND=1
   grep -Fq 'TASK_ID' "$AGENT" || fail "$AGENT does not require TASK_ID"
-  grep -Fq 'pm-handoff.sh write "$TASK_ID"' "$AGENT" || fail "$AGENT does not persist its handoff"
+  grep -Fq 'PM_HANDOFF_TOOL' "$AGENT" || fail "$AGENT does not support global tool resolution"
+  grep -Fq '"$HANDOFF_TOOL" write "$TASK_ID"' "$AGENT" || fail "$AGENT does not persist its handoff"
 done
 [ "$FOUND" -eq 1 ] || fail "no Agent definitions found"
 

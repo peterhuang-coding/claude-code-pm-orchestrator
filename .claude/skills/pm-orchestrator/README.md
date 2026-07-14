@@ -62,10 +62,16 @@
 
 ## 每次启动 Claude Code
 
-在项目根目录执行：
+先从技能仓库安装一次（不会修改 `~/.claude/settings.json` 或凭据）：
 
 ```bash
-./.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
+/Volumes/SanDisk2TB/claude-code-pm-orchestrator/.claude/skills/pm-orchestrator/scripts/install-global.sh
+```
+
+之后在任意项目根目录执行：
+
+```bash
+$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
 ```
 
 脚本会清理冲突的认证/effort 环境变量，并把主模型和子 Agent 模型全部钉到中转站 `glm-5.2`。它用于新的交互会话，不会恢复旧聊天。

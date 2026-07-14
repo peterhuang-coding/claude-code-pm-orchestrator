@@ -31,7 +31,9 @@ git status
 git add .
 git commit -m "checkpoint before parallel claude worktrees"
 
-TASK_ID=$(./.claude/skills/pm-orchestrator/scripts/pm-handoff.sh new <short-name>)
+HANDOFF_TOOL=${PM_HANDOFF_TOOL:-"$HOME/.claude/skills/pm-orchestrator/scripts/pm-handoff.sh"}
+[ -x .claude/skills/pm-orchestrator/scripts/pm-handoff.sh ] && HANDOFF_TOOL=.claude/skills/pm-orchestrator/scripts/pm-handoff.sh
+TASK_ID=$("$HANDOFF_TOOL" new <short-name>)
 echo "$TASK_ID"
 
 git worktree add ../<project>-product -b task/product-<short-name>
@@ -40,11 +42,11 @@ git worktree add ../<project>-test -b task/test-<short-name>
 git worktree add ../<project>-risk -b task/risk-<short-name>
 git worktree add ../<project>-dev -b task/dev-<short-name>
 
-cd ../<project>-product && ./.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
-cd ../<project>-tech && ./.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
-cd ../<project>-test && ./.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
-cd ../<project>-risk && ./.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
-cd ../<project>-dev && ./.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
+(cd ../<project>-product && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
+(cd ../<project>-tech && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
+(cd ../<project>-test && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
+(cd ../<project>-risk && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
+(cd ../<project>-dev && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
 
 git status
 git diff
@@ -64,4 +66,4 @@ git worktree remove ../<project>-dev
 
 补充说明每一步用途、何时不应该创建 worktree、如何处理已有未提交改动。
 
-启动脚本用于新的交互会话；不要附加 `--no-session-persistence`，也不要用 `-c`、`--continue`、`-r` 或 `--resume` 载入已超限旧会话。每个 Agent 的第一条提示词必须带 `TASK_ID` 和唯一 agent role。
+五条启动命令应分别在五个终端中运行，才能真正并发。启动脚本用于新的交互会话；不要附加 `--no-session-persistence`，也不要用 `-c`、`--continue`、`-r` 或 `--resume` 载入已超限旧会话。每个 Agent 的第一条提示词必须带 `TASK_ID` 和唯一 agent role。

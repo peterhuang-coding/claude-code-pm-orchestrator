@@ -12,9 +12,15 @@ $ARGUMENTS
 
 按顺序执行：
 
-1. 设置 `HANDOFF_TOOL=.claude/skills/pm-orchestrator/scripts/pm-handoff.sh`。
+1. 用下面的命令解析工具；找不到可执行文件时明确提示先运行全局安装脚本：
+
+```bash
+HANDOFF_TOOL=${PM_HANDOFF_TOOL:-"$HOME/.claude/skills/pm-orchestrator/scripts/pm-handoff.sh"}
+[ -x .claude/skills/pm-orchestrator/scripts/pm-handoff.sh ] && HANDOFF_TOOL=.claude/skills/pm-orchestrator/scripts/pm-handoff.sh
+[ -x "$HANDOFF_TOOL" ] || { echo "找不到 pm-handoff.sh，请先运行全局安装脚本" >&2; exit 1; }
+```
 2. 运行 `$HANDOFF_TOOL list`。
-3. 如果参数是当前工作目录内存在的旧交接文档路径：保留原文件不修改，执行 `TASK_ID=$($HANDOFF_TOOL new legacy-resume)`；先用 `wc -m` 检查大小，超过 12000 字符时只用 `rg` 定位标题/状态/分支/commit/测试/风险/下一步并读取必要片段，禁止把全文装进上下文；把摘要写成新版 leader handoff。
+3. 如果参数是当前工作目录内存在的旧交接文档路径：保留原文件不修改，执行 `TASK_ID=$("$HANDOFF_TOOL" new legacy-resume)`；先用 `wc -m` 检查大小，超过 12000 字符时只用 `rg` 定位标题/状态/分支/commit/测试/风险/下一步并读取必要片段，禁止把全文装进上下文；把摘要写成新版 leader handoff。
 4. 如果参数是 Task ID，读取该任务；如果没有参数且只有一个活动任务，自动读取；如果有多个活动任务，只列出并让用户指定，禁止猜测。
 5. 如果没有活动任务也没有参数，用下面的受限命令查找旧交接文档。只有一个候选时按第 3 步导入；多个候选时只列路径让用户指定：
 
