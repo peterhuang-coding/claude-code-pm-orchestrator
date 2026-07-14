@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+unset ANTHROPIC_AUTH_TOKEN
+unset CLAUDE_CODE_OAUTH_TOKEN
+unset CLAUDE_CODE_EFFORT_LEVEL
+
+export ANTHROPIC_BASE_URL=${SFKEY_BASE_URL:-https://api.sfkey.cn}
+export ANTHROPIC_MODEL=glm-5.2
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-5.2
+export ANTHROPIC_DEFAULT_SONNET_MODEL=glm-5.2
+export ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.2
+export CLAUDE_CODE_SUBAGENT_MODEL=glm-5.2
+export CLAUDE_MODEL=glm-5.2
+export CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=${CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY:-15}
+
+exec claude --model glm-5.2 --permission-mode bypassPermissions "$@"
