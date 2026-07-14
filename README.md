@@ -17,7 +17,7 @@ chmod +x .claude/skills/pm-orchestrator/scripts/*.sh
 ./.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
 ```
 
-Then run `/leader-task <your request>`. To recover without resuming an oversized chat, start a new Claude Code session in the original project/worktree and run `/leader-resume` or `/leader-resume <Task ID>`.
+Then run `/leader-task <your request>`. To recover without resuming an oversized chat, start a new Claude Code session in the original project/worktree and run `/leader-resume`, `/leader-resume <Task ID>`, or `/leader-resume path/to/legacy-handoff.md`.
 
 Runtime handoffs are stored under each repository's Git common directory, so different projects are isolated while linked worktrees share the same task state.
 

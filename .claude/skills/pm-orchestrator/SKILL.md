@@ -189,6 +189,7 @@ $HANDOFF_TOOL write "$TASK_ID" <agent-role> < /tmp/agent-handoff.md
 
 - 只有一个活动任务：直接 `$HANDOFF_TOOL read`。
 - 多个活动任务：列出 Task ID，让用户指定；禁止猜测。
+- 旧交接文档尚无 Task ID：使用 `/leader-resume <handoff-path>` 导入；保留原文件，新建 `legacy-resume` Task ID，先做受限摘要再用 Git 校准，禁止把超大旧文档全文装入上下文。
 - 读完 handoff 后用 `git status --short`、`git branch --all`、`git log --oneline --decorate -20` 和 `git worktree list` 校准磁盘事实。
 - 以 Git 和文件状态为准；handoff 只负责索引和决策，不替代验证。
 

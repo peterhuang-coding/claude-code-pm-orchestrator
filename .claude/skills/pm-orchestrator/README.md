@@ -45,6 +45,14 @@
 
 只有一个活动任务时自动恢复；有多个时会先列出 Task ID，再执行 `/leader-resume <Task ID>`。恢复结果会与 Git status、branch、log 和 worktree list 交叉校准。
 
+第一次升级到新版 Skill、手里只有旧交接文档时：
+
+```text
+/leader-resume path/to/旧交接.md
+```
+
+它会保留旧文件，创建新的持久化 Task ID，并在受限读取后从 Git/worktree 状态继续。
+
 也可以使用：
 
 ```text
