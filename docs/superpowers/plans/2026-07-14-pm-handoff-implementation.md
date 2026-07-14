@@ -72,5 +72,5 @@
 
 - [x] Run the integration test and static consistency checks.
 - [x] Compare source and Unity copies with `diff -qr` for the managed PM files.
-- [ ] Initialize or update the selected GitHub repository, commit the skill, and push.
-- [ ] Report the GitHub URL and the exact interactive Claude Code launch command.
+- [x] Initialize or update the selected GitHub repository, commit the skill, and push.
+- [x] Report the GitHub URL and the exact interactive Claude Code launch command.
