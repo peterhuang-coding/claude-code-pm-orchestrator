@@ -16,9 +16,12 @@ Usage:
   pm-goal.sh new <slug>       # reads initial request from stdin
   pm-goal.sh brief <goal-id>  # reads goal brief from stdin
   pm-goal.sh approve <goal-id> # reads approval note from stdin
+  pm-goal.sh start <goal-id>
   pm-goal.sh status [goal-id]
   pm-goal.sh read [goal-id]
   pm-goal.sh stop <goal-id>
+  pm-goal.sh block <goal-id>   # reads blocking note from stdin
+  pm-goal.sh complete <goal-id>
   pm-goal.sh path [goal-id]
 EOF
   exit 2
@@ -140,6 +143,14 @@ approve_goal() {
   rm -f "$TMP"
 }
 
+start_goal() {
+  resolve_goal "$1"
+  read_status
+  [ "$STATUS" = approved ] || die "Goal can only start from approved; current status=$STATUS"
+  set_status executing
+  printf '%s\n' "$GOAL_ID"
+}
+
 status_goal() {
   resolve_goal "${1:-}"
   read_status
@@ -167,6 +178,26 @@ stop_goal() {
   printf '%s\n' "$GOAL_ID"
 }
 
+block_goal() {
+  resolve_goal "$1"
+  read_status
+  [ "$STATUS" = executing ] || die "Goal can only be blocked from executing; current status=$STATUS"
+  read_input
+  write_atomic "$(goal_dir)/.blocked-note" "$TMP"
+  set_status blocked
+  printf '%s\n' "$GOAL_ID"
+  trap - EXIT HUP INT TERM
+  rm -f "$TMP"
+}
+
+complete_goal() {
+  resolve_goal "$1"
+  read_status
+  [ "$STATUS" = executing ] || die "Goal can only complete from executing; current status=$STATUS"
+  set_status completed
+  printf '%s\n' "$GOAL_ID"
+}
+
 COMMAND=${1:-}
 case "$COMMAND" in
   new)
@@ -181,6 +212,10 @@ case "$COMMAND" in
     [ "$#" -eq 2 ] || usage
     approve_goal "$2"
     ;;
+  start)
+    [ "$#" -eq 2 ] || usage
+    start_goal "$2"
+    ;;
   status)
     [ "$#" -le 2 ] || usage
     status_goal "${2:-}"
@@ -192,6 +227,14 @@ case "$COMMAND" in
   stop)
     [ "$#" -eq 2 ] || usage
     stop_goal "$2"
+    ;;
+  block)
+    [ "$#" -eq 2 ] || usage
+    block_goal "$2"
+    ;;
+  complete)
+    [ "$#" -eq 2 ] || usage
+    complete_goal "$2"
     ;;
   path)
     [ "$#" -le 2 ] || usage

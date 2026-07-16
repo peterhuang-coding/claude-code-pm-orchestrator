@@ -38,6 +38,8 @@ run_goal status "$GOAL_ID" | grep -Fq 'status=approved' || fail "Goal was not ap
 
 run_goal read "$GOAL_ID" | grep -Fq '# Goal brief' || fail "Goal brief could not be read"
 ! printf '%s\n' 'sk-12345678901234567890' | run_goal brief "$GOAL_ID" >/dev/null 2>&1 || fail "secret-looking brief was accepted"
+run_goal start "$GOAL_ID" >/dev/null
+run_goal status "$GOAL_ID" | grep -Fq 'status=executing' || fail "Goal was not started"
 run_goal stop "$GOAL_ID" >/dev/null
 run_goal status "$GOAL_ID" | grep -Fq 'status=stopped' || fail "Goal was not stopped"
 ! run_goal approve "$GOAL_ID" >/dev/null 2>&1 || fail "stopped Goal was approved"
