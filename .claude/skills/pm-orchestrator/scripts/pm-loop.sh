@@ -147,7 +147,12 @@ fi
 cleanup() {
   rm -rf "$LOCK"
 }
-trap cleanup EXIT HUP INT TERM
+stop_loop() {
+  cleanup
+  exit 130
+}
+trap cleanup EXIT
+trap stop_loop HUP INT TERM
 printf '%s\n' "$$" > "$LOCK/pid"
 date -u '+%Y-%m-%dT%H:%M:%SZ' > "$LOCK/started-at"
 
