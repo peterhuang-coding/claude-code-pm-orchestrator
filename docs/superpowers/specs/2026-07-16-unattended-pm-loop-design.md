@@ -10,6 +10,20 @@ Use an external supervisor script that launches one fresh Claude Code print sess
 
 The loop runs from the project repository and uses the existing GLM launcher. It does not depend on the current interactive Claude session remaining alive.
 
+## Goal alignment gate
+
+Unattended execution is never the first phase. The `/goal` command creates the shared Task ID and enters `discovery`. Product/Research/Tech agents may search public web sources, official product pages, public demos, app stores, public repositories, and licenses to find one recommended benchmark and up to two alternatives. They produce `goal-brief.md` with:
+
+- target user and concrete outcome;
+- recommended benchmark and evidence links;
+- feature/interaction comparison and the proposed adaptation boundary;
+- in-scope work, explicit non-goals, and acceptance criteria;
+- technical constraints, risks, and validation plan.
+
+The goal then enters `awaiting-approval` and the command stops. It must not create implementation worktrees, modify business code, start `pm-loop.sh`, or claim completion before explicit approval. The user approves with `/goal approve <Goal-ID>`, which records approver/time and transitions the goal to `approved`. Only an approved goal may start the loop. Approval is a product-direction gate, not an ordinary tool-permission prompt.
+
+Goal states are `discovery`, `awaiting-approval`, `approved`, `executing`, `completed`, `blocked`, and `stopped`. `/goal status <Goal-ID>` reads the brief and state; `/goal stop <Goal-ID>` requests a graceful stop while preserving the final handoff.
+
 ## User interface
 
 ```bash
@@ -27,6 +41,8 @@ Supported controls:
 - `--sleep-seconds <positive integer>`: optional delay between rounds, default 10.
 - `--allow-dirty`: explicit opt-in for starting with uncommitted changes; without it, the loop stops before changing a dirty worktree.
 
+The loop requires an approved Goal ID, either passed explicitly or found in the current Task handoff. A missing brief or an `awaiting-approval` goal is a hard stop.
+
 ## State and isolation
 
 - A new unique Task ID is created in the target repository's Git common handoff directory.
@@ -40,9 +56,10 @@ Supported controls:
 Every round receives only:
 
 1. project root, current branch, and short Git status;
-2. Task ID and current leader/Agent handoff summaries;
-3. the last round's bounded result;
-4. deadline and remaining round budget.
+2. approved Goal ID and the bounded `goal-brief.md`;
+3. Task ID and current leader/Agent handoff summaries;
+4. the last round's bounded result;
+5. deadline and remaining round budget.
 
 The Claude session must:
 
