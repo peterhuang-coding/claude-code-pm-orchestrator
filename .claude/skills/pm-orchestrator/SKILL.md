@@ -20,7 +20,7 @@ description: Use when product or engineering work needs PM-style decomposition, 
 - 总控交叉复核方式
 - 最终交付方案
 
-小歧义不要频繁问用户；基于上下文和仓库现状做合理假设。只有影响方向、范围、生产行为、数据安全、成本、交付口径或是否能继续推进的问题，才问用户。每次最多问 1 个关键问题，并给推荐选项。
+小歧义不要频繁问用户；基于上下文和仓库现状做合理假设。产品方向、对标对象、范围和验收标准属于强制审批项，必须先通过 `/goal` 对齐并等待用户批准；其他问题只有影响生产行为、数据安全、成本或是否能继续推进时才问用户。
 
 ## 2. 适用场景
 
@@ -50,7 +50,20 @@ description: Use when product or engineering work needs PM-style decomposition, 
 5. 是否适合并行；小任务不要为了并发而并发。
 6. 是否需要 worktree；涉及并发修改或多 session 才需要。
 7. 是否需要子 Agent；能单点完成的小任务可直接完成。
-8. 是否需要问用户 1 个关键问题；如果能推进，不要停下来等确认。
+8. 是否需要问用户 1 个关键问题；Goal 方向和验收标准已经由 `/goal` 明确批准后才能推进。
+
+### 4.1 Goal 对齐闸门
+
+以下情况必须先使用 `/goal <目标>`，不能直接进入实现或无人值守 loop：
+
+- 新产品、新玩法、新模块或用户体验改造。
+- 用户要求“做得像某个产品”、寻找竞品、对标、参考或抄功能。
+- 目标范围、用户、验收标准或优先级仍可能改变。
+- 用户要求长时间自动化研发。
+
+`/goal` 阶段必须通过公开资料搜索找到一个推荐对标产品，最多列出两个备选，并保存证据链接、功能/交互映射、适配边界、范围、非目标、验收标准、技术约束和风险到 `goal.md`。允许参考官网、官方文档、应用商店、公开 Demo、公开仓库和许可证；禁止复制私有代码、素材、品牌、付费内容或受限制材料。
+
+Goal 状态必须按 `discovery -> awaiting-approval -> approved` 进入研发。只有用户明确执行 `/goal approve <Goal-ID>` 后，才允许 `/leader-task` 创建实现 worktree 或启动 `pm-loop.sh`；如果批准命令同时给出 `--until`，可以直接进入无人值守 loop。`awaiting-approval` 是产品决策状态，不是普通工具权限确认，不能由 Agent 自行推断为批准。
 
 ## 5. 默认执行模式
 
@@ -59,6 +72,18 @@ description: Use when product or engineering work needs PM-style decomposition, 
 ```text
 并发分析 -> 单点实现 -> 并发验收
 ```
+
+### Approved Goal 的自动化执行
+
+已批准 Goal 才能使用无人值守 loop：
+
+```bash
+$HOME/.claude/skills/pm-orchestrator/scripts/pm-loop.sh \
+  --goal-id <Goal-ID> \
+  --until "2026-07-18T08:00"
+```
+
+每轮启动新的 print-mode Claude 会话，只读取批准后的 `goal.md`、短 handoff、Git 状态和上一轮摘要；这通过会话轮换实现自动 compact。Loop 不直接改 `main`，会使用 `pm-loop/<Goal-ID>` 分支；连续失败三轮、遇到安全边界或状态不明确时停止并写 `blocked` handoff。
 
 ### 新功能需求
 

@@ -122,12 +122,12 @@ NOW_EPOCH=$(date '+%s')
   exit 0
 }
 
-ROOT=$($HANDOFF_TOOL root)
+ROOT=$("$HANDOFF_TOOL" root)
 [ -n "$GOAL_ID" ] || die '--goal-id is required for unattended execution'
-GOAL_STATUS=$($GOAL_TOOL status "$GOAL_ID") || die "cannot read Goal $GOAL_ID"
+GOAL_STATUS=$("$GOAL_TOOL" status "$GOAL_ID") || die "cannot read Goal $GOAL_ID"
 STATUS=$(printf '%s\n' "$GOAL_STATUS" | sed -n 's/^goal_id=[^ ]* status=\([^ ]*\)$/\1/p')
 [ "$STATUS" = approved ] || die "Goal $GOAL_ID must be approved before loop start; current status=$STATUS"
-GOAL_BRIEF=$($GOAL_TOOL read "$GOAL_ID")
+GOAL_BRIEF=$("$GOAL_TOOL" read "$GOAL_ID")
 [ -n "$GOAL_BRIEF" ] || die "Goal $GOAL_ID brief is empty"
 
 TOPLEVEL=$(git rev-parse --show-toplevel 2>/dev/null) || die 'current directory is not a Git repository'
@@ -156,7 +156,7 @@ if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
   die "loop branch already exists: $BRANCH"
 fi
 git switch -c "$BRANCH" >/dev/null
-$GOAL_TOOL start "$GOAL_ID" >/dev/null
+"$GOAL_TOOL" start "$GOAL_ID" >/dev/null
 
 TASK_DIR="$ROOT/$GOAL_ID"
 ROUNDS_DIR="$TASK_DIR/rounds"
@@ -168,9 +168,9 @@ VALIDATION_FAILURES=0
 write_round_handoff() {
   SUMMARY=$1
   printf '%s\n' "$SUMMARY" > "$ROUNDS_DIR/round-$ROUND.md"
-  printf '%s\n' "$SUMMARY" | $HANDOFF_TOOL write "$GOAL_ID" "loop-$ROUND" >/dev/null
+  printf '%s\n' "$SUMMARY" | "$HANDOFF_TOOL" write "$GOAL_ID" "loop-$ROUND" >/dev/null
   if [ ! -s "$TASK_DIR/leader.md" ]; then
-    printf '%s\n' "$SUMMARY" | $HANDOFF_TOOL write "$GOAL_ID" leader >/dev/null
+    printf '%s\n' "$SUMMARY" | "$HANDOFF_TOOL" write "$GOAL_ID" leader >/dev/null
   fi
 }
 

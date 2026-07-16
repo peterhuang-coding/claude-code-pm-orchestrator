@@ -8,6 +8,10 @@
 
 每个项目的 handoff 位于自己的 `<git-common-dir>/pm-handoffs/`。多个项目互不影响；同一项目的 worktree 共享状态，并按唯一 Task ID 隔离并发任务。
 
+## 什么时候用 `/goal`
+
+新产品、新功能、玩法改造、对标竞品或需要长时间自动化研发时，先运行 `/goal <目标>`。它会基于公开资料找推荐对标产品，整理目标、范围、非目标、验收标准和风险，然后停在 `awaiting-approval`。你确认后运行 `/goal approve <Goal-ID>`，才允许进入实现或 `pm-loop.sh`。
+
 ## 什么时候用 `/pm-route`
 
 当你只想“先拆活”，还不想执行、也不想改代码时使用。它只做任务分类和 Agent 路由，不创建文件、不改代码。
@@ -34,6 +38,14 @@
 6. Review / Test / Doc 并发验收。
 7. 总控交叉复核。
 8. 总控写入最终 handoff 并标记任务完成。
+
+长时间无人值守时使用已批准 Goal：
+
+```bash
+$HOME/.claude/skills/pm-orchestrator/scripts/pm-loop.sh \
+  --goal-id <Goal-ID> \
+  --until "2026-07-18T08:00"
+```
 
 ## 会话爆掉后怎么恢复
 

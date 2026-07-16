@@ -29,7 +29,8 @@ rg --files -g '*handoff*.md' -g '*HANDOFF*.md' -g 'CLAUDE_LOOP_PROMPT.md'
 ```
 
 6. 设置 `TASK_ID=<选中或新建的任务 ID>`，读取 `$HANDOFF_TOOL read "$TASK_ID" leader` 和该任务已有的 Agent handoff 摘要。
-7. 用以下命令校准，不信任已经过期的状态：
+7. 如果任务目录存在 `goal.md`，读取 Goal 状态；状态为 `awaiting-approval` 时只输出 brief 摘要并停止，状态不是 `approved`、`executing`、`completed`、`blocked` 或 `stopped` 时不得继续改代码。
+8. 用以下命令校准，不信任已经过期的状态：
 
 ```bash
 git status --short
@@ -38,9 +39,9 @@ git log --oneline --decorate -20
 git worktree list
 ```
 
-8. 对每个相关 worktree 检查 `git status --short` 和最近 5 个 commit；不要读取完整文件、完整 diff 或长日志。
-9. 把校准结果立即重写到 leader handoff，状态设为 `resumed`，并验证文件非空。
-10. 输出不超过 1200 个中文字符：项目目标、已完成改动、未提交改动、待合并分支、验证结果、风险和下一条精确命令。
-11. 用户要求继续执行时，从 handoff 的下一步开始；不要重新做已经由 Git/测试证明完成的工作。
+9. 对每个相关 worktree 检查 `git status --short` 和最近 5 个 commit；不要读取完整文件、完整 diff 或长日志。
+10. 把校准结果立即重写到 leader handoff，状态设为 `resumed`，并验证文件非空。
+11. 输出不超过 1200 个中文字符：项目目标、Goal 状态、已完成改动、未提交改动、待合并分支、验证结果、风险和下一条精确命令。
+12. 用户要求继续执行时，从 handoff 的下一步开始；不要重新做已经由 Git/测试证明完成的工作。
 
 不同 Git 仓库的 handoff 根目录天然隔离；同一仓库的 worktree 共享 handoff，但不同 LeaderTask 由 `TASK_ID` 隔离。

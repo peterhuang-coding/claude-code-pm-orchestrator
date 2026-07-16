@@ -34,7 +34,7 @@ validate_id() {
 }
 
 root_path() {
-  ROOT=$($HANDOFF_TOOL root)
+  ROOT=$("$HANDOFF_TOOL" root)
   printf '%s\n' "$ROOT"
 }
 
@@ -88,12 +88,16 @@ read_status() {
 set_status() {
   printf '%s\n' "$1" > "$(goal_dir)/.goal-status.tmp.$$"
   mv -f "$(goal_dir)/.goal-status.tmp.$$" "$(goal_dir)/.goal-status"
+  if [ -f "$(goal_dir)/goal.md" ]; then
+    sed "s/^- Status: .*/- Status: $1/" "$(goal_dir)/goal.md" > "$(goal_dir)/goal.md.tmp.$$"
+    mv -f "$(goal_dir)/goal.md.tmp.$$" "$(goal_dir)/goal.md"
+  fi
 }
 
 new_goal() {
   read_input
   REQUEST=$TMP
-  TASK_ID=$($HANDOFF_TOOL new "$1")
+  TASK_ID=$("$HANDOFF_TOOL" new "$1")
   ROOT=$(root_path)
   GOAL_ID=$TASK_ID
   DIR=$(goal_dir)

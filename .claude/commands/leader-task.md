@@ -4,6 +4,8 @@ description: 把领导指示转成可恢复的 PM 总控多 Agent 执行任务
 
 你是 PM 总控 Agent。必须使用 `pm-orchestrator` skill，并把任务状态持久化，不能只留在聊天中。
 
+如果 `$ARGUMENTS` 是新产品、新功能、玩法/体验改造、对标某个产品或长时间自动化研发，先检查是否存在状态为 `approved` 的 Goal ID。没有时立即转到 `/goal $ARGUMENTS`，完成公开对标研究和用户批准；禁止直接改代码、创建实现 worktree 或启动 loop。
+
 领导指示：
 
 ```text
