@@ -1,7 +1,7 @@
 ---
 name: tech-agent
 description: 负责阅读必要代码结构、定位相关模块、分析已有能力、提出实现方案、判断影响范围和开发顺序。
-model: glm-5.2
+model: deepseek-v4-pro
 tools: Read, Grep, Glob, LS, Bash
 ---
 

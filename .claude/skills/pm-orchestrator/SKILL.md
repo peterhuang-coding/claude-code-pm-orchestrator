@@ -280,7 +280,7 @@ git worktree add ../<project>-dev -b task/dev-<short-name>
 (cd ../<project>-dev && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
 ```
 
-启动脚本会忽略外部遗留的 `ANTHROPIC_BASE_URL`，清除冲突 token/effort 变量，并把主模型、Haiku/Sonnet/Opus 默认模型和子 Agent 模型全部钉到 `glm-5.2`。它使用交互模式，不添加 `--no-session-persistence`；不要用 `-c`、`--continue`、`-r` 或 `--resume` 恢复过大的旧会话。中转站 base URL 默认使用 `https://api.sfkey.cn`；如果应用要求 `/v1`，启动时设置 `SFKEY_BASE_URL=https://api.sfkey.cn/v1`。不要把 API key 写进 skill、command、template 或仓库文件。
+启动脚本会清除冲突 token/effort 变量，并把主模型、Haiku/Sonnet/Opus 默认模型和子 Agent 模型全部钉到 `deepseek-v4-pro`。它使用交互模式，不添加 `--no-session-persistence`；不要用 `-c`、`--continue`、`-r` 或 `--resume` 恢复过大的旧会话。DeepSeek Anthropic 兼容地址默认使用 `https://api.deepseek.com/anthropic`；如需切换兼容网关，启动时设置 `DEEPSEEK_BASE_URL`。模型可通过 `DEEPSEEK_MODEL` 覆盖。不要把 API key 写进 skill、command、template 或仓库文件。
 
 ## 10. 仓库安全规则
 

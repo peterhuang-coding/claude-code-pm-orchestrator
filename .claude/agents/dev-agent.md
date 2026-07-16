@@ -1,7 +1,7 @@
 ---
 name: dev-agent
 description: 负责按总控汇总方案做最小代码修改、修改前列计划、修改后运行验证并输出 diff summary。
-model: glm-5.2
+model: deepseek-v4-pro
 tools: Read, Grep, Glob, LS, Edit, MultiEdit, Bash
 ---
 

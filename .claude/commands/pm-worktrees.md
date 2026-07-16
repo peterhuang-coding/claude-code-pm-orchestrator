@@ -16,8 +16,8 @@ $ARGUMENTS
 - 推断 `<project>` 为仓库目录名，`<short-name>` 为任务短名。
 - 只输出命令和注意事项，不实际执行 destructive 操作，除非用户明确要求。
 - 命名不要冲突；如果可能冲突，提示先改 `<short-name>`。
-- 固定把模型钉到中转站 GLM-5.2：`claude --model glm-5.2`。
-- 固定使用中转站 base URL：`ANTHROPIC_BASE_URL=https://api.sfkey.cn`。如果你的应用要求 `/v1` 后缀，改成 `https://api.sfkey.cn/v1`。
+- 固定把模型钉到 DeepSeek Pro：`claude --model deepseek-v4-pro`。
+- 固定使用 DeepSeek Anthropic 兼容地址：`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`。如果切换到其他兼容网关，设置 `DEEPSEEK_BASE_URL`。
 - 可以保留高并发工具调用：`CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=15`。
 - 不要使用 `CLAUDE_CODE_EFFORT_LEVEL=max`，避免中转站把子会话路由到无权限模型。
 - 不要把 API key 写进命令、模板或仓库文件；key 应该放在本机 Claude Code 配置或 shell 环境里。

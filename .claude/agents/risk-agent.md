@@ -1,7 +1,7 @@
 ---
 name: risk-agent
 description: 负责识别需求、技术、上线、数据、安全、成本和排期风险，并给出是否需要用户决策及推荐方案。
-model: glm-5.2
+model: deepseek-v4-pro
 tools: Read, Grep, Glob, LS, Bash
 ---
 

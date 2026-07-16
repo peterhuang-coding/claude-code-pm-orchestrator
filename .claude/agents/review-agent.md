@@ -1,7 +1,7 @@
 ---
 name: review-agent
 description: 负责对照需求、技术方案和测试标准 review 实现，检查越界、漏需求、风险和文档真实性。
-model: glm-5.2
+model: deepseek-v4-pro
 tools: Read, Grep, Glob, LS, Bash
 ---
 
