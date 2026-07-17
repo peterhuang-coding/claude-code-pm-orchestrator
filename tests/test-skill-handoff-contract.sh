@@ -29,7 +29,7 @@ require_pattern '旧交接' '.claude/commands/leader-resume.md'
 require_pattern '恢复流程' '.claude/skills/pm-orchestrator/SKILL.md'
 require_pattern '上下文预算' '.claude/skills/pm-orchestrator/SKILL.md'
 require_pattern 'git-common-dir' '.claude/skills/pm-orchestrator/SKILL.md'
-require_pattern 'launch-claude-glm\.sh' '.claude/commands/pm-worktrees.md'
+require_pattern 'launch-claude-deepseek\.sh' '.claude/commands/pm-worktrees.md'
 require_pattern 'Task ID' '.claude/templates/leader-handoff.md'
 require_pattern 'awaiting-approval' '.claude/commands/goal.md'
 require_pattern 'pm-goal\.sh' '.claude/commands/goal.md'
@@ -39,7 +39,7 @@ require_pattern 'pm-loop\.sh' '.claude/skills/pm-orchestrator/SKILL.md'
 require_pattern '对标' '.claude/skills/pm-orchestrator/SKILL.md'
 
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-handoff.sh" ] || fail "pm-handoff.sh is not executable"
-[ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh" ] || fail "launch-claude-glm.sh is not executable"
+[ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh" ] || fail "launch-claude-deepseek.sh is not executable"
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/install-global.sh" ] || fail "install-global.sh is not executable"
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-goal.sh" ] || fail "pm-goal.sh is not executable"
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-loop.sh" ] || fail "pm-loop.sh is not executable"

@@ -23,6 +23,11 @@ copy_tree "$SOURCE_CLAUDE/commands" "$TARGET_CLAUDE/commands"
 copy_tree "$SOURCE_CLAUDE/templates" "$TARGET_CLAUDE/templates"
 copy_tree "$SOURCE_CLAUDE/skills/pm-orchestrator" "$TARGET_CLAUDE/skills/pm-orchestrator"
 
+OLD_LAUNCHER="$TARGET_CLAUDE/skills/pm-orchestrator/scripts/launch-claude-glm.sh"
+if [ -f "$OLD_LAUNCHER" ]; then
+  rm -f "$OLD_LAUNCHER"
+fi
+
 chmod +x "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/"*.sh
 
 printf 'Installed PM orchestrator into %s\n' "$TARGET_CLAUDE"

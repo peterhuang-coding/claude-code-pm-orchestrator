@@ -56,13 +56,13 @@
 - Modify: `.claude/skills/pm-orchestrator/SKILL.md`
 - Modify: `.claude/commands/pm-worktrees.md`
 - Modify: `.claude/templates/worktree-plan.md`
-- Create: `.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh`
-- Create: `tests/test-launch-claude-glm.sh`
+- Create: `.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh`
+- Create: `tests/test-launch-claude-deepseek.sh`
 
 - [x] Write and run a failing launcher test with a stub `claude` executable.
 - [x] Pin the relay URL, GLM-5.2 main/default/subagent models, and permission mode in interactive launch commands.
 - [x] Explicitly exclude resume flags and interactive `--no-session-persistence`.
-- [x] Run `sh tests/test-launch-claude-glm.sh` and verify it passes.
+- [x] Run `sh tests/test-launch-claude-deepseek.sh` and verify it passes.
 - [x] Verify no API key or token value is present.
 
 ### Task 6: Validate, synchronize, and publish

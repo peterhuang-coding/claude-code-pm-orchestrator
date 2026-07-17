@@ -26,11 +26,11 @@ git worktree add ../<project>-dev -b task/dev-<short-name>
 ## 3. 启动 Claude
 
 ```bash
-(cd ../<project>-product && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
-(cd ../<project>-tech && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
-(cd ../<project>-test && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
-(cd ../<project>-risk && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
-(cd ../<project>-dev && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh}")
+(cd ../<project>-product && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
+(cd ../<project>-tech && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
+(cd ../<project>-test && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
+(cd ../<project>-risk && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
+(cd ../<project>-dev && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
 ```
 
 启动脚本默认使用 `https://api.deepseek.com/anthropic`，清除冲突 token/effort 和子 Agent 模型变量，将主模型钉到 `deepseek-v4-pro`；子 Agent 继承 Claude Code 当前默认模型。如果需要兼容网关，启动时设置 `DEEPSEEK_BASE_URL`；主模型可通过 `DEEPSEEK_MODEL` 覆盖。不要把 API key 写入模板或仓库文件。不要给交互模式添加 `--no-session-persistence`，不要恢复已经过大的旧会话。

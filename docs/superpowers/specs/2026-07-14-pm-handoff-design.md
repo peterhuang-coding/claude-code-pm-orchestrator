@@ -20,7 +20,7 @@ Different repositories have different Git common directories. Worktrees from one
 ## Components
 
 - `pm-handoff.sh`: create, list, read, write, complete, and locate handoffs with atomic writes.
-- `launch-claude-glm.sh`: clear conflicting inherited variables and pin all main/default/subagent routes to GLM-5.2 for a fresh interactive session.
+- `launch-claude-deepseek.sh`: clear conflicting inherited variables and pin all main/default/subagent routes to GLM-5.2 for a fresh interactive session.
 - `leader-task.md`: initialize or resume a task before exploration and checkpoint after every phase transition.
 - `pm-handoff.md`: manual list/show/checkpoint/complete command.
 - Agent definitions: write concise role handoffs through the shared tool.

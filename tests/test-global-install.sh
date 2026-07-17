@@ -16,6 +16,8 @@ trap 'rm -rf "$SANDBOX"' EXIT HUP INT TERM
 HOME_DIR="$SANDBOX/home"
 TARGET="$HOME_DIR/.claude"
 mkdir -p "$TARGET"
+mkdir -p "$TARGET/skills/pm-orchestrator/scripts"
+printf '%s\n' 'legacy launcher' > "$TARGET/skills/pm-orchestrator/scripts/launch-claude-glm.sh"
 printf '%s\n' '{"env":{"KEEP_ME":"yes"}}' > "$TARGET/settings.json"
 cp "$TARGET/settings.json" "$SANDBOX/settings.before"
 
@@ -25,7 +27,8 @@ cmp -s "$SANDBOX/settings.before" "$TARGET/settings.json" || fail "installer cha
 [ -x "$TARGET/skills/pm-orchestrator/scripts/pm-handoff.sh" ] || fail "handoff tool was not installed"
 [ -x "$TARGET/skills/pm-orchestrator/scripts/pm-goal.sh" ] || fail "goal tool was not installed"
 [ -x "$TARGET/skills/pm-orchestrator/scripts/pm-loop.sh" ] || fail "loop tool was not installed"
-[ -x "$TARGET/skills/pm-orchestrator/scripts/launch-claude-glm.sh" ] || fail "launcher was not installed"
+[ -x "$TARGET/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh" ] || fail "launcher was not installed"
+[ ! -e "$TARGET/skills/pm-orchestrator/scripts/launch-claude-glm.sh" ] || fail "legacy GLM launcher was not removed"
 [ -x "$TARGET/skills/pm-orchestrator/scripts/install-global.sh" ] || fail "installer was not installed"
 [ -f "$TARGET/commands/leader-task.md" ] || fail "leader-task command was not installed"
 [ -f "$TARGET/commands/leader-resume.md" ] || fail "leader-resume command was not installed"

@@ -6,7 +6,7 @@
 
 **Architecture:** `pm-goal.sh` stores Goal metadata beside the existing repository-scoped PM handoff, with explicit states and atomic transitions. `pm-loop.sh` validates an approved Goal, creates an isolated `pm-loop/<task-slug>` branch, launches one fresh print-mode Claude session per round through the existing GLM launcher, bounds the next prompt to handoff summaries, and stops on completion, deadline, safety failure, or repeated failures. Markdown commands and the main skill document describe the product-research approval phase; shell tests protect state transitions and loop safety.
 
-**Tech Stack:** POSIX `sh`, Git, existing `pm-handoff.sh`, existing `launch-claude-glm.sh`, Claude Code print mode, Markdown command/skill files.
+**Tech Stack:** POSIX `sh`, Git, existing `pm-handoff.sh`, existing `launch-claude-deepseek.sh`, Claude Code print mode, Markdown command/skill files.
 
 ---
 
@@ -32,7 +32,7 @@
 - [ ] Run `sh tests/test-pm-loop.sh` and verify it fails because `pm-loop.sh` is absent.
 - [ ] Implement option parsing for required `--until`, optional `--goal-id`, `--max-rounds`, `--sleep-seconds`, and `--allow-dirty`; resolve tools from project-local, launcher environment, then `$HOME/.claude`; validate local or offset ISO deadlines.
 - [ ] Require an approved Goal brief, refuse unsafe dirty worktrees by default, create `pm-loop/<goal-slug>` from the current branch, refuse an existing branch, create a Git-common lock, and release it with traps. Never run reset, clean, checkout, deployment, or deletion commands.
-- [ ] For each round, launch `launch-claude-glm.sh --print --no-session-persistence` with only bounded Goal brief, status, handoff, last result, deadline, and budget. Save full output to a per-round log; pass only a bounded summary forward. Require `CONTINUE`, `DONE`, or `BLOCKED` and update leader handoff after every round.
+- [ ] For each round, launch `launch-claude-deepseek.sh --print --no-session-persistence` with only bounded Goal brief, status, handoff, last result, deadline, and budget. Save full output to a per-round log; pass only a bounded summary forward. Require `CONTINUE`, `DONE`, or `BLOCKED` and update leader handoff after every round.
 - [ ] Stop on deadline or `DONE`; stop non-zero on `BLOCKED`, safety failure, lock contention, invalid state, or three consecutive code-validation failures; retry transport failures with bounded backoff; never mark the PM task complete automatically.
 - [ ] Run `sh tests/test-pm-loop.sh`; expected output is `PASS: unattended PM loop safety`.
 - [ ] Commit with `git add .claude/skills/pm-orchestrator/scripts/pm-loop.sh tests/test-pm-loop.sh && git commit -m "feat: add approved-goal unattended loop"`.
@@ -60,7 +60,7 @@
 - Modify: `.claude/skills/pm-orchestrator/scripts/install-global.sh` only if its existing recursive copy does not include the new scripts
 - Test: all files under `tests/`
 
-- [ ] Run `sh tests/test-global-install.sh`, `sh tests/test-launch-claude-glm.sh`, `sh tests/test-pm-handoff.sh`, `sh tests/test-pm-goal.sh`, `sh tests/test-pm-loop.sh`, `sh tests/test-skill-handoff-contract.sh`, `git diff --check`, and `sh -n .claude/skills/pm-orchestrator/scripts/*.sh tests/*.sh`; all must exit 0.
+- [ ] Run `sh tests/test-global-install.sh`, `sh tests/test-launch-claude-deepseek.sh`, `sh tests/test-pm-handoff.sh`, `sh tests/test-pm-goal.sh`, `sh tests/test-pm-loop.sh`, `sh tests/test-skill-handoff-contract.sh`, `git diff --check`, and `sh -n .claude/skills/pm-orchestrator/scripts/*.sh tests/*.sh`; all must exit 0.
 - [ ] Push the verified commits, fast-forward `/Volumes/SanDisk2TB/claude-code-pm-orchestrator`, and run `/Volumes/SanDisk2TB/claude-code-pm-orchestrator/.claude/skills/pm-orchestrator/scripts/install-global.sh`; preserve `~/.claude/settings.json` and credentials.
 - [ ] From a sibling project, verify the global scripts use that repository's handoff root; verify an unapproved Goal refuses the loop and an approved Goal with a past deadline exits cleanly without invoking Claude.
 - [ ] Record the final commit, tests, installed paths, Goal ID workflow, and overnight command in the handoff. Do not mark the user Goal complete; only make the loop ready for the first run.

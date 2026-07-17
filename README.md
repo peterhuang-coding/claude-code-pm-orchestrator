@@ -16,7 +16,7 @@ This installs only the PM orchestrator commands, agents, templates, and skill in
 
 ```bash
 cd /path/to/any-project
-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
+$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh
 ```
 
 Then run `/leader-task <your request>`. To recover without resuming an oversized chat, start a new Claude Code session in the original project/worktree and run `/leader-resume`, `/leader-resume <Task ID>`, or `/leader-resume path/to/legacy-handoff.md`.

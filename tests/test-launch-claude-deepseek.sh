@@ -2,16 +2,16 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-LAUNCHER="$SCRIPT_DIR/../.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh"
+LAUNCHER="$SCRIPT_DIR/../.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh"
 LAUNCHER_DIR=$(CDPATH= cd -- "$(dirname -- "$LAUNCHER")" && pwd)
-LAUNCHER="$LAUNCHER_DIR/launch-claude-glm.sh"
+LAUNCHER="$LAUNCHER_DIR/launch-claude-deepseek.sh"
 
 fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
 
-[ -x "$LAUNCHER" ] || fail "launch-claude-glm.sh is missing or not executable"
+[ -x "$LAUNCHER" ] || fail "launch-claude-deepseek.sh is missing or not executable"
 
 SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/launch-claude-test.XXXXXX")
 trap 'rm -rf "$SANDBOX"' EXIT HUP INT TERM

@@ -17,6 +17,6 @@ export ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL"
 export CLAUDE_MODEL="$MODEL"
 export CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=${CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY:-15}
 export PM_HANDOFF_TOOL="$SCRIPT_DIR/pm-handoff.sh"
-export PM_CLAUDE_LAUNCHER="$SCRIPT_DIR/launch-claude-glm.sh"
+export PM_CLAUDE_LAUNCHER="$SCRIPT_DIR/launch-claude-deepseek.sh"
 
 exec claude --model "$MODEL" --permission-mode bypassPermissions "$@"
