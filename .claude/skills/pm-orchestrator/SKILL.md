@@ -63,7 +63,7 @@ description: Use when product or engineering work needs PM-style decomposition, 
 
 `/goal` 阶段必须通过公开资料搜索找到一个推荐对标产品，最多列出两个备选，并保存证据链接、功能/交互映射、适配边界、范围、非目标、验收标准、技术约束和风险到 `goal.md`。允许参考官网、官方文档、应用商店、公开 Demo、公开仓库和许可证；禁止复制私有代码、素材、品牌、付费内容或受限制材料。
 
-Goal 状态必须按 `discovery -> awaiting-approval -> approved` 进入研发。只有用户明确执行 `/goal approve <Goal-ID>` 后，才允许 `/leader-task` 创建实现 worktree 或启动 `pm-loop.sh`；如果批准命令同时给出 `--until`，可以直接进入无人值守 loop。`awaiting-approval` 是产品决策状态，不是普通工具权限确认，不能由 Agent 自行推断为批准。
+Goal 状态必须按 `discovery -> awaiting-approval -> approved` 进入研发。只有用户明确执行 `/goal approve` 或 `/goal approve <Goal-ID>` 后，才允许 `/leader-task` 创建实现 worktree 或启动 `pm-loop.sh`；无 ID 时使用当前项目最近的有效 Goal。如果批准命令同时给出 `--until`，可以直接进入无人值守 loop。`awaiting-approval` 是产品决策状态，不是普通工具权限确认，不能由 Agent 自行推断为批准。
 
 ## 5. 默认执行模式
 

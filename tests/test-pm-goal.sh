@@ -3,6 +3,7 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 GOAL_SCRIPT="$SCRIPT_DIR/../.claude/skills/pm-orchestrator/scripts/pm-goal.sh"
+HANDOFF_SCRIPT="$SCRIPT_DIR/../.claude/skills/pm-orchestrator/scripts/pm-handoff.sh"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -31,8 +32,11 @@ run_goal status "$GOAL_ID" | grep -Fq 'status=discovery' || fail "new Goal was n
 printf '%s\n' '# Goal brief' | run_goal brief "$GOAL_ID" >/dev/null
 run_goal status "$GOAL_ID" | grep -Fq 'status=awaiting-approval' || fail "brief did not await approval"
 
-! run_goal approve "$GOAL_ID" </dev/null >/dev/null 2>&1 || fail "approval without a note was accepted"
-printf '%s\n' 'Approved for implementation after product review.' | run_goal approve "$GOAL_ID" >/dev/null
+(cd "$REPO" && PM_HANDOFF_ROOT="$SANDBOX/handoffs" "$HANDOFF_SCRIPT" new legacy-task >/dev/null)
+
+! run_goal approve </dev/null >/dev/null 2>&1 || fail "approval without a note was accepted"
+printf '%s\n' 'Approved for implementation after product review.' | run_goal approve >/dev/null
+run_goal status | grep -Fq "goal_id=$GOAL_ID status=approved" || fail "latest Goal was not approved without an ID"
 run_goal status "$GOAL_ID" | grep -Fq 'status=approved' || fail "Goal was not approved"
 ! printf '%s\n' 'second approval' | run_goal approve "$GOAL_ID" >/dev/null 2>&1 || fail "second approval was accepted"
 

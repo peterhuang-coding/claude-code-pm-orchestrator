@@ -38,17 +38,18 @@ GOAL_TOOL=${PM_GOAL_TOOL:-"$HOME/.claude/skills/pm-orchestrator/scripts/pm-goal.
 
 ## 批准目标
 
-当输入为 `/goal approve <Goal-ID>` 时：
+当输入为 `/goal approve` 或 `/goal approve <Goal-ID>` 时：
 
-1. 读取并摘要 Goal brief；确认其中包含推荐对标对象、证据链接、范围、非目标和验收标准。
-2. 只有用户明确使用 `approve`、`批准` 或“确认方案”才允许执行批准，不得自行推断。
-3. 执行：
+1. 如果未提供 Goal ID，运行 `"$GOAL_TOOL" status`，使用当前项目最近的有效 Goal；如果没有 Goal，提示用户先运行 `/goal <目标>`。如果提供了 Goal ID，则使用指定 Goal。
+2. 读取并摘要 Goal brief；确认其中包含推荐对标对象、证据链接、范围、非目标和验收标准。
+3. 只有用户明确使用 `approve`、`批准` 或“确认方案”才允许执行批准，不得自行推断。
+4. 执行：
 
 ```bash
 printf '%s\n' 'Approved by user through /goal approve.' | "$GOAL_TOOL" approve "$GOAL_ID"
 ```
 
-4. 输出“Goal 已批准，可以执行”，同时给出：
+5. 输出“Goal 已批准，可以执行”，同时给出：
 
 ```bash
 $HOME/.claude/skills/pm-orchestrator/scripts/pm-loop.sh --goal-id <Goal-ID> --until "<截止时间>"
@@ -56,7 +57,7 @@ $HOME/.claude/skills/pm-orchestrator/scripts/pm-loop.sh --goal-id <Goal-ID> --un
 
 批准只解锁研发，不代表已经完成。用户要无人值守时必须显式提供截止时间并启动 loop。
 
-如果用户输入的是 `/goal approve <Goal-ID> --until "<截止时间>"`，批准写入成功后立即执行上面的 `pm-loop.sh`，不再二次询问；这是用户已经明确批准产品方向并明确给出截止时间的自动化授权。
+如果用户输入的是 `/goal approve [<Goal-ID>] --until "<截止时间>"`，批准写入成功后立即执行上面的 `pm-loop.sh`，不再二次询问；这是用户已经明确批准产品方向并明确给出截止时间的自动化授权。
 
 ## 查询和停止
 

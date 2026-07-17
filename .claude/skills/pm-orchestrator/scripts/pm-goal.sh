@@ -15,7 +15,7 @@ usage() {
 Usage:
   pm-goal.sh new <slug>       # reads initial request from stdin
   pm-goal.sh brief <goal-id>  # reads goal brief from stdin
-  pm-goal.sh approve <goal-id> # reads approval note from stdin
+  pm-goal.sh approve [goal-id] # reads approval note from stdin; defaults to latest Goal
   pm-goal.sh start <goal-id>
   pm-goal.sh status [goal-id]
   pm-goal.sh read [goal-id]
@@ -48,10 +48,25 @@ resolve_goal() {
     return
   fi
 
-  [ -s "$ROOT/LATEST" ] || die "no Goal ID provided and no latest task exists"
-  GOAL_ID=$(cat "$ROOT/LATEST")
-  validate_id "$GOAL_ID"
-  [ -f "$ROOT/$GOAL_ID/.goal-status" ] || die "latest task is not a Goal; pass an explicit Goal ID"
+  if [ -s "$ROOT/LATEST" ]; then
+    LATEST_ID=$(cat "$ROOT/LATEST")
+    validate_id "$LATEST_ID"
+    if [ -f "$ROOT/$LATEST_ID/.goal-status" ]; then
+      GOAL_ID=$LATEST_ID
+      return
+    fi
+  fi
+
+  GOAL_ID=
+  for GOAL_DIR in "$ROOT"/*; do
+    [ -f "$GOAL_DIR/.goal-status" ] || continue
+    CANDIDATE=${GOAL_DIR##*/}
+    validate_id "$CANDIDATE"
+    if [ -z "$GOAL_ID" ] || [ "$CANDIDATE" \> "$GOAL_ID" ]; then
+      GOAL_ID=$CANDIDATE
+    fi
+  done
+  [ -n "$GOAL_ID" ] || die "no Goal exists; create one with /goal <request>"
 }
 
 goal_dir() {
@@ -213,8 +228,8 @@ case "$COMMAND" in
     write_brief "$2"
     ;;
   approve)
-    [ "$#" -eq 2 ] || usage
-    approve_goal "$2"
+    [ "$#" -ge 1 ] && [ "$#" -le 2 ] || usage
+    approve_goal "${2:-}"
     ;;
   start)
     [ "$#" -eq 2 ] || usage
