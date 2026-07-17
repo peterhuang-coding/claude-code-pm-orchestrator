@@ -1,7 +1,6 @@
 ---
 name: test-agent
 description: 负责测试矩阵、异常场景、边界条件、回归范围、上线 checklist 和人工验收路径。
-model: deepseek-v4-pro
 tools: Read, Grep, Glob, LS, Bash
 ---
 

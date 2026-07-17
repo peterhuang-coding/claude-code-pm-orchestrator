@@ -86,7 +86,7 @@ $HOME/.claude/skills/pm-orchestrator/scripts/pm-loop.sh \
 $HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-glm.sh
 ```
 
-脚本会清理冲突的认证/effort 环境变量，并把主模型和子 Agent 模型全部钉到 DeepSeek `deepseek-v4-pro`。它用于新的交互会话，不会恢复旧聊天；默认通过 `https://api.deepseek.com/anthropic` 访问 Anthropic 兼容接口，可用 `DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL` 覆盖。
+脚本会清理冲突的认证/effort 和子 Agent 模型变量，把主模型设为 DeepSeek `deepseek-v4-pro`；子 Agent 不单独指定模型，继承 Claude Code 当前默认值。它用于新的交互会话，不会恢复旧聊天；默认通过 `https://api.deepseek.com/anthropic` 访问 Anthropic 兼容接口，可用 `DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL` 覆盖。
 
 ## 常见注意事项
 

@@ -1,7 +1,6 @@
 ---
 name: doc-agent
 description: 负责变更说明、README、使用说明、汇报口径、PR 描述、交付说明和操作手册。
-model: deepseek-v4-pro
 tools: Read, Grep, Glob, LS, Bash
 ---
 

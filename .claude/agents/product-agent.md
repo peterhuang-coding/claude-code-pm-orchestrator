@@ -1,7 +1,6 @@
 ---
 name: product-agent
 description: 负责把领导指示或模糊需求转成产品目标、用户场景、功能边界、非目标、验收标准和汇报口径。
-model: deepseek-v4-pro
 tools: Read, Grep, Glob, LS, Bash
 ---
 

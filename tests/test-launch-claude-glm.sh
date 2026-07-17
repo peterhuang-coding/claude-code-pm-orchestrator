@@ -49,6 +49,7 @@ CLAUDE_CODE_OAUTH_TOKEN=old-oauth \
 CLAUDE_CODE_EFFORT_LEVEL=max \
 ANTHROPIC_BASE_URL=https://api.sfkey.cn \
 DEEPSEEK_BASE_URL=https://relay.example/v1 \
+CLAUDE_CODE_SUBAGENT_MODEL=old-subagent \
 CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=6 \
 "$LAUNCHER" --name test-session
 
@@ -60,7 +61,7 @@ grep -Fxq 'ANTHROPIC_MODEL=deepseek-v4-pro' "$OUT" || fail "main model was not p
 grep -Fxq 'ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-pro' "$OUT" || fail "Haiku model was not pinned"
 grep -Fxq 'ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-pro' "$OUT" || fail "Sonnet model was not pinned"
 grep -Fxq 'ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4-pro' "$OUT" || fail "Opus model was not pinned"
-grep -Fxq 'CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-pro' "$OUT" || fail "subagent model was not pinned"
+grep -Fxq 'CLAUDE_CODE_SUBAGENT_MODEL=<unset>' "$OUT" || fail "subagent model override was not cleared"
 grep -Fxq 'CLAUDE_MODEL=deepseek-v4-pro' "$OUT" || fail "Claude model was not pinned"
 grep -Fxq 'CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=6' "$OUT" || fail "concurrency override was lost"
 grep -Fxq "PM_HANDOFF_TOOL=$(dirname "$LAUNCHER")/pm-handoff.sh" "$OUT" || fail "handoff tool path was not exported"

@@ -22,7 +22,7 @@ $ARGUMENTS
 - 不要使用 `CLAUDE_CODE_EFFORT_LEVEL=max`，避免中转站把子会话路由到无权限模型。
 - 不要把 API key 写进命令、模板或仓库文件；key 应该放在本机 Claude Code 配置或 shell 环境里。
 - 先用 `pm-handoff.sh new <short-name>` 创建唯一 `TASK_ID`；所有 worktree/Agent 共用该 ID。
-- 使用统一启动脚本清理旧 DeepSeek/Token 环境并钉住主模型和子 Agent 模型。
+- 使用统一启动脚本清理旧 DeepSeek/Token 环境并钉住主模型；子 Agent 继承 Claude Code 当前默认模型。
 
 请输出以下命令块：
 
