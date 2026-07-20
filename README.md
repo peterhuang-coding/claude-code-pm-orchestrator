@@ -21,6 +21,8 @@ $HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh
 
 Then run `/leader-task <your request>`. To recover without resuming an oversized chat, start a new Claude Code session in the original project/worktree and run `/leader-resume`, `/leader-resume <Task ID>`, or `/leader-resume path/to/legacy-handoff.md`.
 
+For image understanding, use `/imageinput /path/to/image.png Analyze this page`. Set `OPENROUTER_API_KEY` locally; the main coding model remains DeepSeek and only the image helper uses OpenRouter.
+
 For new products, feature goals, benchmark-driven work, or unattended R&D, start with `/goal <request>`. It researches public benchmark products, writes a bounded goal brief, and waits for `/goal approve <Goal-ID>`. Only approved Goals can run the unattended loop:
 
 ```bash

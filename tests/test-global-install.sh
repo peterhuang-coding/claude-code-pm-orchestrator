@@ -33,6 +33,8 @@ cmp -s "$SANDBOX/settings.before" "$TARGET/settings.json" || fail "installer cha
 [ -f "$TARGET/commands/leader-task.md" ] || fail "leader-task command was not installed"
 [ -f "$TARGET/commands/leader-resume.md" ] || fail "leader-resume command was not installed"
 [ -f "$TARGET/commands/goal.md" ] || fail "goal command was not installed"
+[ -f "$TARGET/commands/imageinput.md" ] || fail "imageinput command was not installed"
+[ -f "$TARGET/skills/pm-orchestrator/scripts/pm-imageinput.py" ] || fail "image input helper was not installed"
 [ -f "$TARGET/agents/dev-agent.md" ] || fail "agents were not installed"
 [ -f "$TARGET/templates/leader-handoff.md" ] || fail "templates were not installed"
 

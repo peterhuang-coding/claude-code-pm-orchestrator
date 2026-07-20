@@ -28,6 +28,18 @@
 
 推荐先在主仓库确认 `git status`，必要时做 checkpoint commit。分析 Agent 可以放到不同 worktree 里并发看代码；Dev Agent 默认只在一个 dev worktree 里单点实现；实现后再让 Review / Test / Doc 并发验收。不要让多个 Dev Agent 同时改同一批文件。
 
+## 图片理解
+
+在 Claude Code 中使用 `/imageinput /path/to/screenshot.png 分析页面结构、按钮和当前状态`。主模型仍然走 DeepSeek；命令通过 `pm-imageinput.py` 把本地图片发送给 OpenRouter 视觉模型，再把有限文本分析带回当前任务。默认模型是 `google/gemini-3-flash-preview`，可通过 `OPENROUTER_VISION_MODEL` 覆盖。
+
+先在 shell 中配置本机私有 key，不要写入仓库：
+
+```bash
+export OPENROUTER_API_KEY="你的 OpenRouter key"
+```
+
+也可以把这行加入 `~/.zshrc`。图片会离开本机发送给 OpenRouter；涉及私人后台、密钥或未公开资料时不要调用。
+
 ## 推荐工作流
 
 1. `/leader-task` 贴领导指示。
