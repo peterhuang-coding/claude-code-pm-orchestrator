@@ -1,0 +1,47 @@
+#!/bin/sh
+set -eu
+
+SCRIPT=$0
+while [ -L "$SCRIPT" ]; do
+  LINK_DIR=$(CDPATH= cd -- "$(dirname -- "$SCRIPT")" && pwd -P)
+  LINK_TARGET=$(readlink "$SCRIPT")
+  case "$LINK_TARGET" in
+    /*) SCRIPT=$LINK_TARGET ;;
+    *) SCRIPT="$LINK_DIR/$LINK_TARGET" ;;
+  esac
+done
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$SCRIPT")" && pwd -P)
+INSTALLER="$SCRIPT_DIR/install-global.sh"
+HUB_TOOL="$SCRIPT_DIR/pm-hub.sh"
+
+[ -x "$INSTALLER" ] || {
+  echo "claude-yolo: PM Orchestrator source is unavailable: $INSTALLER" >&2
+  exit 1
+}
+
+"$INSTALLER" >/dev/null
+GLOBAL_ENTRY="$HOME/.claude/bin/claude-pm"
+[ -x "$GLOBAL_ENTRY" ] || {
+  echo "claude-yolo: global Claude PM entrypoint was not installed" >&2
+  exit 1
+}
+
+HUB=$("$HUB_TOOL" init)
+TARGET=
+
+if [ "$#" -gt 0 ] && [ "$1" = hub ]; then
+  TARGET=$HUB
+  shift
+elif [ "$#" -gt 0 ] && [ -d "$1" ]; then
+  TARGET=$1
+  shift
+else
+  CLASSIFICATION=$("$HUB_TOOL" classify "$PWD")
+  KIND=$(printf '%s\n' "$CLASSIFICATION" | cut -f1)
+  case "$KIND" in
+    project|hub) TARGET=$PWD ;;
+    *) TARGET=$HUB ;;
+  esac
+fi
+
+exec "$GLOBAL_ENTRY" "$TARGET" "$@"

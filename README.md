@@ -15,10 +15,12 @@ This installs only the PM orchestrator commands, agents, templates, and skill in
 ## Start Claude Code
 
 ```bash
-$HOME/.claude/skills/pm-orchestrator/scripts/claude-pm /path/to/any-project
+claude-yolo
+claude-yolo /path/to/any-project
+claude-yolo hub
 ```
 
-The entrypoint preserves the model, provider, authentication, effort, concurrency, and subagent routing from the current Claude Code configuration. It adds `bypassPermissions`, discovers whether the directory is a registered project or the central Hub, and starts with a bounded cold-start summary.
+`claude-yolo` runs from the source package on `/Volumes/SanDisk2TB`, synchronizes all PM Skills and commands before every launch, and then starts the model-neutral `claude-pm` entrypoint. With no path, a registered current project is used; an unknown directory falls back to the central Hub. The entrypoint preserves the model, provider, authentication, effort, concurrency, and subagent routing from the current Claude Code configuration while adding `bypassPermissions` and a bounded cold-start summary.
 
 Use `/project-register` once in a new project. For normal work, run `/do <your request>`; it routes the task, verifies the result, and writes `/wrap-up` state to `/Volumes/SanDisk2TB/claude-pm-hub`. Run `/portfolio` from the Hub to report across projects, and `/idea <text>` to capture work without starting it.
 

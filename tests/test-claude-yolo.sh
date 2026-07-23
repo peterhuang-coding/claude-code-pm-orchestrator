@@ -1,0 +1,72 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+YOLO="$ROOT/.claude/skills/pm-orchestrator/scripts/claude-yolo"
+
+fail() {
+  echo "FAIL: $*" >&2
+  exit 1
+}
+
+[ -x "$YOLO" ] || fail "claude-yolo is missing or not executable"
+
+SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/claude-yolo-test.XXXXXX")
+SANDBOX=$(CDPATH= cd -- "$SANDBOX" && pwd -P)
+trap 'rm -rf "$SANDBOX"' EXIT HUP INT TERM
+HOME_DIR="$SANDBOX/home"
+HUB="$SANDBOX/hub"
+PROJECT="$SANDBOX/project"
+UNKNOWN="$SANDBOX/unknown"
+BIN="$SANDBOX/bin"
+OUT="$SANDBOX/claude.out"
+mkdir -p "$HOME_DIR" "$PROJECT" "$UNKNOWN" "$BIN"
+
+cat > "$BIN/claude" <<'EOF'
+#!/bin/sh
+set -eu
+{
+  printf 'PWD=%s\n' "$PWD"
+  printf 'ARGS='
+  printf '<%s>' "$@"
+  printf '\n'
+} > "${CLAUDE_YOLO_TEST_OUT:?}"
+EOF
+chmod +x "$BIN/claude"
+
+(
+  cd "$UNKNOWN"
+  HOME="$HOME_DIR" \
+  PATH="$BIN:$PATH" \
+  PM_HUB_HOME="$HUB" \
+  CLAUDE_YOLO_TEST_OUT="$OUT" \
+  "$YOLO" --name unknown-start
+)
+
+[ -x "$HOME_DIR/.claude/bin/claude-pm" ] || fail "Skills were not synchronized before launch"
+grep -Fxq "PWD=$HUB" "$OUT" || fail "unknown directory did not fall back to Hub"
+grep -Fq 'ARGS=<--permission-mode><bypassPermissions><--name><unknown-start><' "$OUT" || fail "YOLO launch omitted bypass permissions"
+
+HOME="$HOME_DIR" PM_HUB_HOME="$HUB" \
+  "$HOME_DIR/.claude/skills/pm-orchestrator/scripts/pm-hub.sh" register "$PROJECT" sample >/dev/null
+
+(
+  cd "$PROJECT"
+  HOME="$HOME_DIR" \
+  PATH="$BIN:$PATH" \
+  PM_HUB_HOME="$HUB" \
+  CLAUDE_YOLO_TEST_OUT="$OUT" \
+  "$YOLO" --name project-start
+)
+
+grep -Fxq "PWD=$PROJECT" "$OUT" || fail "registered project was not selected"
+grep -Fq 'sample' "$OUT" || fail "project cold start was not loaded"
+
+HOME="$HOME_DIR" \
+PATH="$BIN:$PATH" \
+PM_HUB_HOME="$HUB" \
+CLAUDE_YOLO_TEST_OUT="$OUT" \
+"$YOLO" hub --name hub-start
+grep -Fxq "PWD=$HUB" "$OUT" || fail "explicit hub target failed"
+
+echo "PASS: Claude YOLO entrypoint"

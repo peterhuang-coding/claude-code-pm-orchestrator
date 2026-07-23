@@ -93,10 +93,12 @@ $HOME/.claude/skills/pm-orchestrator/scripts/pm-loop.sh \
 之后在任意项目根目录执行：
 
 ```bash
-$HOME/.claude/skills/pm-orchestrator/scripts/claude-pm /path/to/project
+claude-yolo
+claude-yolo /path/to/project
+claude-yolo hub
 ```
 
-脚本不会改模型、Provider、认证、effort、并发或子 Agent 路由；这些全部继承 Claude Code 当前配置。它启用 `bypassPermissions`，读取中央 Hub 的有界摘要，并开启新的交互会话而不是恢复旧聊天。
+`claude-yolo` 的源码位于闪迪盘，每次启动先同步全局 Skills 和 commands。无参数时，当前目录是已登记项目就进入项目，否则进入中央 Hub。脚本不会改模型、Provider、认证、effort、并发或子 Agent 路由；这些全部继承 Claude Code 当前配置。它启用 `bypassPermissions`，读取中央 Hub 的有界摘要，并开启新的交互会话而不是恢复旧聊天。
 
 日常使用 `/do <一句话需求>`。新项目先 `/project-register`，结束时 `/wrap-up`，跨项目汇总使用 `/portfolio`，暂不执行的想法使用 `/idea`。
 

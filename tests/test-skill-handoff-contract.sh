@@ -53,6 +53,7 @@ require_pattern '对标' '.claude/skills/pm-orchestrator/SKILL.md'
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-handoff.sh" ] || fail "pm-handoff.sh is not executable"
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/launch-claude.sh" ] || fail "launch-claude.sh is not executable"
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/claude-pm" ] || fail "claude-pm is not executable"
+[ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/claude-yolo" ] || fail "claude-yolo is not executable"
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-hub.sh" ] || fail "pm-hub.sh is not executable"
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/install-global.sh" ] || fail "install-global.sh is not executable"
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-goal.sh" ] || fail "pm-goal.sh is not executable"
