@@ -23,12 +23,17 @@ copy_tree "$SOURCE_CLAUDE/commands" "$TARGET_CLAUDE/commands"
 copy_tree "$SOURCE_CLAUDE/templates" "$TARGET_CLAUDE/templates"
 copy_tree "$SOURCE_CLAUDE/skills/pm-orchestrator" "$TARGET_CLAUDE/skills/pm-orchestrator"
 
-OLD_LAUNCHER="$TARGET_CLAUDE/skills/pm-orchestrator/scripts/launch-claude-glm.sh"
-if [ -f "$OLD_LAUNCHER" ]; then
-  rm -f "$OLD_LAUNCHER"
-fi
+for OLD_LAUNCHER in \
+  "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/launch-claude-glm.sh" \
+  "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh"
+do
+  [ ! -f "$OLD_LAUNCHER" ] || rm -f "$OLD_LAUNCHER"
+done
 
 chmod +x "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/"*.sh
+chmod +x "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/claude-pm"
+mkdir -p "$TARGET_CLAUDE/bin"
+ln -sf "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/claude-pm" "$TARGET_CLAUDE/bin/claude-pm"
 
 printf 'Installed PM orchestrator into %s\n' "$TARGET_CLAUDE"
 printf 'Existing settings.json and credentials were not modified.\n'

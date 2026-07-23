@@ -20,7 +20,25 @@ description: Use when product or engineering work needs PM-style decomposition, 
 - 总控交叉复核方式
 - 最终交付方案
 
-小歧义不要频繁问用户；基于上下文和仓库现状做合理假设。产品方向、对标对象、范围和验收标准属于强制审批项，必须先通过 `/goal` 对齐并等待用户批准；其他问题只有影响生产行为、数据安全、成本或是否能继续推进时才问用户。
+小歧义不要频繁问用户；基于上下文和仓库现状做合理假设。直接使用底层 `/goal` 时，产品方向、对标对象、范围和验收标准属于审批项；用户使用 `/do` 时，该句话本身是有界执行授权，不再重复审批。其他问题只有影响生产行为、数据安全、成本或是否能继续推进时才问用户。
+
+### 一句话自动执行
+
+日常入口优先使用 `/do <需求>`。用户主动调用 `/do` 即批准在该句话的字面范围内自主分析、修改、测试、commit、创建可逆 worktree、调用 subagent 或 Agent Teams，并在结束时自动 `/wrap-up`。这条显式授权替代同一任务的额外 `/goal approve`；底层仍创建 Goal、Task ID 和 handoff 以便恢复与审计。
+
+只有生产发布、付费、外部账号授权、密钥创建或轮换、删除数据、不可逆 Git 操作，或存在结果明显不同的产品方向歧义时才暂停询问。普通计划、实现细节、测试方式、可逆 Git 操作和 Agent 路由由总控自行决定。
+
+### 个人研发 Hub
+
+中央知识库默认位于 `/Volumes/SanDisk2TB/claude-pm-hub`。Skill 和脚本是可更新的程序，Hub 是不可被安装器覆盖的个人运行数据；密钥只放在 Claude Code settings、环境变量或系统 Keychain。
+
+- `claude-pm [项目路径]`：模型中立的统一冷启动入口。
+- `/wrap-up`：把事实、验证、风险、Idea 和唯一下一步写回当前项目。
+- `/portfolio`：让一个老板总控 Agent 汇总所有已注册项目并写任务队列。
+- `/idea`：记录当前项目或 Portfolio Idea。
+- `/project-register`：注册新项目，不修改项目代码。
+
+冷启动只读取有界 Hub 摘要、PM handoff 元数据和 Git 状态，不恢复旧聊天。项目目录进入项目经理模式；Hub 根目录进入老板总控模式；未知目录必须先注册。
 
 ## 2. 适用场景
 
@@ -273,14 +291,14 @@ git worktree add ../<project>-test -b task/test-<short-name>
 git worktree add ../<project>-risk -b task/risk-<short-name>
 git worktree add ../<project>-dev -b task/dev-<short-name>
 
-(cd ../<project>-product && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
-(cd ../<project>-tech && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
-(cd ../<project>-test && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
-(cd ../<project>-risk && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
-(cd ../<project>-dev && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
+(cd ../<project>-product && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude.sh}")
+(cd ../<project>-tech && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude.sh}")
+(cd ../<project>-test && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude.sh}")
+(cd ../<project>-risk && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude.sh}")
+(cd ../<project>-dev && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude.sh}")
 ```
 
-启动脚本会清除冲突 token/effort 和子 Agent 模型变量，只把主模型及 Haiku/Sonnet/Opus 默认模型设为 `deepseek-v4-pro`；子 Agent 不单独指定模型，继承 Claude Code 当前默认值。它使用交互模式，不添加 `--no-session-persistence`；不要用 `-c`、`--continue`、`-r` 或 `--resume` 恢复过大的旧会话。DeepSeek Anthropic 兼容地址默认使用 `https://api.deepseek.com/anthropic`；如需切换兼容网关，启动时设置 `DEEPSEEK_BASE_URL`。主模型可通过 `DEEPSEEK_MODEL` 覆盖。不要把 API key 写进 skill、command、template 或仓库文件。
+启动脚本只追加 `bypassPermissions` 并导出 PM 工具路径，不清理或覆盖模型、Provider、认证、effort、并发及子 Agent 路由。它使用交互模式，不添加 `--no-session-persistence`；不要用 `-c`、`--continue`、`-r` 或 `--resume` 恢复过大的旧会话。不要把 API key 写进 skill、command、template 或仓库文件。
 
 ## 10. 仓库安全规则
 
@@ -297,7 +315,7 @@ git worktree add ../<project>-dev -b task/dev-<short-name>
 
 ## 10.5 图片理解辅助
 
-当用户需要 Claude Code 理解截图、页面或视觉状态时，使用 `/imageinput`。它调用全局 `pm-imageinput.py` 通过 OpenRouter 视觉模型分析本地图片，主模型仍保持当前 DeepSeek 路由。图片分析只作为证据返回，不得让视觉辅助工具直接修改代码；涉及私人数据时先确认外传风险。
+当用户需要 Claude Code 理解截图、页面或视觉状态时，使用 `/imageinput`。它调用全局 `pm-imageinput.py` 通过 OpenRouter 视觉模型分析本地图片，Claude Code 当前主模型保持不变。图片分析只作为证据返回，不得让视觉辅助工具直接修改代码；涉及私人数据时先确认外传风险。
 
 支持同步分析，也支持以 `background` 开头启动后台 job，再用 job ID 查询结果。当前对话没有本地图片路径时，不要假装能读取附件，先要求用户提供路径。
 

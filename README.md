@@ -15,13 +15,16 @@ This installs only the PM orchestrator commands, agents, templates, and skill in
 ## Start Claude Code
 
 ```bash
-cd /path/to/any-project
-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh
+$HOME/.claude/skills/pm-orchestrator/scripts/claude-pm /path/to/any-project
 ```
 
-Then run `/leader-task <your request>`. To recover without resuming an oversized chat, start a new Claude Code session in the original project/worktree and run `/leader-resume`, `/leader-resume <Task ID>`, or `/leader-resume path/to/legacy-handoff.md`.
+The entrypoint preserves the model, provider, authentication, effort, concurrency, and subagent routing from the current Claude Code configuration. It adds `bypassPermissions`, discovers whether the directory is a registered project or the central Hub, and starts with a bounded cold-start summary.
 
-For image understanding, use `/imageinput /path/to/image.png Analyze this page`. Set `OPENROUTER_API_KEY` locally; the main coding model remains DeepSeek and only the image helper uses OpenRouter.
+Use `/project-register` once in a new project. For normal work, run `/do <your request>`; it routes the task, verifies the result, and writes `/wrap-up` state to `/Volumes/SanDisk2TB/claude-pm-hub`. Run `/portfolio` from the Hub to report across projects, and `/idea <text>` to capture work without starting it.
+
+Lower-level `/goal`, `/leader-task`, and `/leader-resume` commands remain available for specialist control and recovery.
+
+For image understanding, use `/imageinput /path/to/image.png Analyze this page`. Set `OPENROUTER_API_KEY` locally; the current coding model remains unchanged and only the image helper uses OpenRouter.
 
 For new products, feature goals, benchmark-driven work, or unattended R&D, start with `/goal <request>`. It researches public benchmark products, writes a bounded goal brief, and waits for `/goal approve <Goal-ID>`. Only approved Goals can run the unattended loop:
 

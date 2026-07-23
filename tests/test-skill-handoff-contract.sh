@@ -29,7 +29,19 @@ require_pattern '旧交接' '.claude/commands/leader-resume.md'
 require_pattern '恢复流程' '.claude/skills/pm-orchestrator/SKILL.md'
 require_pattern '上下文预算' '.claude/skills/pm-orchestrator/SKILL.md'
 require_pattern 'git-common-dir' '.claude/skills/pm-orchestrator/SKILL.md'
-require_pattern 'launch-claude-deepseek\.sh' '.claude/commands/pm-worktrees.md'
+require_pattern 'launch-claude\.sh' '.claude/commands/pm-worktrees.md'
+require_pattern 'pm-hub\.sh' '.claude/commands/do.md'
+require_pattern '/wrap-up' '.claude/commands/do.md'
+require_pattern 'Agent Team' '.claude/commands/do.md'
+require_pattern '生产|付费|密钥|不可逆' '.claude/commands/do.md'
+require_pattern 'pm-hub\.sh' '.claude/commands/wrap-up.md'
+require_pattern 'pm-hub\.sh' '.claude/commands/portfolio.md'
+require_pattern 'assign <project-id>' '.claude/commands/portfolio.md'
+require_pattern 'pm-hub\.sh' '.claude/commands/idea.md'
+require_pattern 'pm-hub\.sh' '.claude/commands/project-register.md'
+require_pattern '一句话' '.claude/skills/pm-orchestrator/SKILL.md'
+require_pattern 'Agent Teams' '.claude/skills/pm-orchestrator/SKILL.md'
+require_pattern 'claude-pm-hub' '.claude/skills/pm-orchestrator/SKILL.md'
 require_pattern 'Task ID' '.claude/templates/leader-handoff.md'
 require_pattern 'awaiting-approval' '.claude/commands/goal.md'
 require_pattern 'pm-goal\.sh' '.claude/commands/goal.md'
@@ -39,7 +51,9 @@ require_pattern 'pm-loop\.sh' '.claude/skills/pm-orchestrator/SKILL.md'
 require_pattern '对标' '.claude/skills/pm-orchestrator/SKILL.md'
 
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-handoff.sh" ] || fail "pm-handoff.sh is not executable"
-[ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh" ] || fail "launch-claude-deepseek.sh is not executable"
+[ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/launch-claude.sh" ] || fail "launch-claude.sh is not executable"
+[ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/claude-pm" ] || fail "claude-pm is not executable"
+[ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-hub.sh" ] || fail "pm-hub.sh is not executable"
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/install-global.sh" ] || fail "install-global.sh is not executable"
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-goal.sh" ] || fail "pm-goal.sh is not executable"
 [ -x "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-loop.sh" ] || fail "pm-loop.sh is not executable"

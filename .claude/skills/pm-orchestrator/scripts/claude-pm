@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+
+SCRIPT=$0
+while [ -L "$SCRIPT" ]; do
+  LINK_DIR=$(CDPATH= cd -- "$(dirname -- "$SCRIPT")" && pwd -P)
+  LINK_TARGET=$(readlink "$SCRIPT")
+  case "$LINK_TARGET" in
+    /*) SCRIPT=$LINK_TARGET ;;
+    *) SCRIPT="$LINK_DIR/$LINK_TARGET" ;;
+  esac
+done
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$SCRIPT")" && pwd -P)
+HUB_TOOL="$SCRIPT_DIR/pm-hub.sh"
+LAUNCHER="$SCRIPT_DIR/launch-claude.sh"
+
+TARGET=$PWD
+if [ "$#" -gt 0 ] && [ -d "$1" ]; then
+  TARGET=$1
+  shift
+fi
+
+for ARG in "$@"; do
+  case "$ARG" in
+    -c|--continue|-r|--resume|--resume=*|--from-pr|--from-pr=*)
+      echo "claude-pm: resume flags are incompatible with a fresh cold start: $ARG" >&2
+      exit 2
+      ;;
+  esac
+done
+
+TARGET=$(CDPATH= cd -- "$TARGET" && pwd -P)
+"$HUB_TOOL" init >/dev/null
+COLD_START=$("$HUB_TOOL" cold-start "$TARGET")
+
+cd "$TARGET"
+exec "$LAUNCHER" "$@" "$COLD_START"

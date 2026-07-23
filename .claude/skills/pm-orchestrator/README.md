@@ -30,7 +30,7 @@
 
 ## 图片理解
 
-在 Claude Code 中使用 `/imageinput /path/to/screenshot.png 分析页面结构、按钮和当前状态`。主模型仍然走 DeepSeek；命令通过 `pm-imageinput.py` 把本地图片发送给 OpenRouter 视觉模型，再把有限文本分析带回当前任务。默认模型是 `google/gemini-3-flash-preview`，可通过 `OPENROUTER_VISION_MODEL` 覆盖。
+在 Claude Code 中使用 `/imageinput /path/to/screenshot.png 分析页面结构、按钮和当前状态`。当前 Claude Code 主模型保持不变；命令通过 `pm-imageinput.py` 把本地图片发送给 OpenRouter 视觉模型，再把有限文本分析带回当前任务。默认模型是 `google/gemini-3-flash-preview`，可通过 `OPENROUTER_VISION_MODEL` 覆盖。
 
 先在 shell 中配置本机私有 key，不要写入仓库：
 
@@ -42,14 +42,12 @@ export OPENROUTER_API_KEY="你的 OpenRouter key"
 
 ## 推荐工作流
 
-1. `/leader-task` 贴领导指示。
-2. 按输出创建 worktree。
-3. 分别启动子 Claude。
-4. 收集子 Agent 输出。
-5. Dev Agent 单点实现。
-6. Review / Test / Doc 并发验收。
-7. 总控交叉复核。
-8. 总控写入最终 handoff 并标记任务完成。
+1. 新项目执行一次 `/project-register`。
+2. 日常直接输入 `/do <一句话需求>`。
+3. 总控自动选择单 Agent、subagent、Agent Teams 或 worktree。
+4. 自动实现、测试、Review 和修复。
+5. `/wrap-up` 写入项目 handoff 与中央 Hub。
+6. 在 Hub 中用 `/portfolio` 汇总所有项目。
 
 长时间无人值守时使用已批准 Goal：
 
@@ -95,10 +93,12 @@ $HOME/.claude/skills/pm-orchestrator/scripts/pm-loop.sh \
 之后在任意项目根目录执行：
 
 ```bash
-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh
+$HOME/.claude/skills/pm-orchestrator/scripts/claude-pm /path/to/project
 ```
 
-脚本会清理冲突的认证/effort 和子 Agent 模型变量，把主模型设为 DeepSeek `deepseek-v4-pro`；子 Agent 不单独指定模型，继承 Claude Code 当前默认值。它用于新的交互会话，不会恢复旧聊天；默认通过 `https://api.deepseek.com/anthropic` 访问 Anthropic 兼容接口，可用 `DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL` 覆盖。
+脚本不会改模型、Provider、认证、effort、并发或子 Agent 路由；这些全部继承 Claude Code 当前配置。它启用 `bypassPermissions`，读取中央 Hub 的有界摘要，并开启新的交互会话而不是恢复旧聊天。
+
+日常使用 `/do <一句话需求>`。新项目先 `/project-register`，结束时 `/wrap-up`，跨项目汇总使用 `/portfolio`，暂不执行的想法使用 `/idea`。
 
 ## 常见注意事项
 
@@ -113,5 +113,5 @@ $HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh
 ## 快速测试示例
 
 ```text
-/leader-task 领导让我把某个功能需求拆成研发可执行方案，并给出风险和验收标准
+/do 修复当前最影响用户体验的问题，完成实现、测试、Review 和复盘
 ```

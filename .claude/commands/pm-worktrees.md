@@ -16,13 +16,11 @@ $ARGUMENTS
 - 推断 `<project>` 为仓库目录名，`<short-name>` 为任务短名。
 - 只输出命令和注意事项，不实际执行 destructive 操作，除非用户明确要求。
 - 命名不要冲突；如果可能冲突，提示先改 `<short-name>`。
-- 固定把模型钉到 DeepSeek Pro：`claude --model deepseek-v4-pro`。
-- 固定使用 DeepSeek Anthropic 兼容地址：`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`。如果切换到其他兼容网关，设置 `DEEPSEEK_BASE_URL`。
-- 可以保留高并发工具调用：`CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=15`。
-- 不要使用 `CLAUDE_CODE_EFFORT_LEVEL=max`，避免中转站把子会话路由到无权限模型。
+- 不指定或覆盖主模型、Haiku/Sonnet/Opus 路由、子 Agent 模型、Base URL、认证、effort 或并发变量。
+- 所有会话继承 Claude Code settings 和当前 shell 的模型 Profile。
 - 不要把 API key 写进命令、模板或仓库文件；key 应该放在本机 Claude Code 配置或 shell 环境里。
 - 先用 `pm-handoff.sh new <short-name>` 创建唯一 `TASK_ID`；所有 worktree/Agent 共用该 ID。
-- 使用统一启动脚本清理旧 DeepSeek/Token 环境并钉住主模型；子 Agent 继承 Claude Code 当前默认模型。
+- 使用统一的模型中立启动脚本，并为每个会话启用 `bypassPermissions`。
 
 请输出以下命令块：
 
@@ -42,11 +40,11 @@ git worktree add ../<project>-test -b task/test-<short-name>
 git worktree add ../<project>-risk -b task/risk-<short-name>
 git worktree add ../<project>-dev -b task/dev-<short-name>
 
-(cd ../<project>-product && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
-(cd ../<project>-tech && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
-(cd ../<project>-test && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
-(cd ../<project>-risk && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
-(cd ../<project>-dev && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh}")
+(cd ../<project>-product && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude.sh}")
+(cd ../<project>-tech && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude.sh}")
+(cd ../<project>-test && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude.sh}")
+(cd ../<project>-risk && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude.sh}")
+(cd ../<project>-dev && "${PM_CLAUDE_LAUNCHER:-$HOME/.claude/skills/pm-orchestrator/scripts/launch-claude.sh}")
 
 git status
 git diff

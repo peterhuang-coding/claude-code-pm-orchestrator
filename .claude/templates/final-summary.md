@@ -2,6 +2,8 @@
 
 - Task ID:
 - Leader handoff path:
+- Hub project ID:
+- Hub session summary:
 
 ## 1. 需求理解
 
@@ -25,3 +27,4 @@
 
 - 最终 handoff 是否非空：
 - 是否已标记完成：
+- `/wrap-up` 是否成功：

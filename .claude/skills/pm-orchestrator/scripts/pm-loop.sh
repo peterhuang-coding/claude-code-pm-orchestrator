@@ -4,7 +4,7 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 HANDOFF_TOOL=${PM_HANDOFF_TOOL:-"$SCRIPT_DIR/pm-handoff.sh"}
 GOAL_TOOL=${PM_GOAL_TOOL:-"$SCRIPT_DIR/pm-goal.sh"}
-LAUNCHER=${PM_CLAUDE_LAUNCHER:-"$SCRIPT_DIR/launch-claude-deepseek.sh"}
+LAUNCHER=${PM_CLAUDE_LAUNCHER:-"$SCRIPT_DIR/launch-claude.sh"}
 UNTIL=
 GOAL_ID=
 MAX_ROUNDS=${PM_LOOP_MAX_ROUNDS:-1000}
@@ -112,7 +112,7 @@ positive_int '--sleep-seconds' "$SLEEP_SECONDS"
 
 HANDOFF_TOOL=$(resolve_tool pm-handoff.sh "${PM_HANDOFF_TOOL:-}" "$SCRIPT_DIR/pm-handoff.sh")
 GOAL_TOOL=$(resolve_tool pm-goal.sh "${PM_GOAL_TOOL:-}" "$SCRIPT_DIR/pm-goal.sh")
-LAUNCHER=$(resolve_tool launch-claude-deepseek.sh "${PM_CLAUDE_LAUNCHER:-}" "$SCRIPT_DIR/launch-claude-deepseek.sh")
+LAUNCHER=$(resolve_tool launch-claude.sh "${PM_CLAUDE_LAUNCHER:-}" "$SCRIPT_DIR/launch-claude.sh")
 export PM_HANDOFF_TOOL PM_GOAL_TOOL PM_CLAUDE_LAUNCHER
 
 DEADLINE_EPOCH=$(parse_deadline "$UNTIL")
