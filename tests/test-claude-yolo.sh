@@ -21,6 +21,7 @@ UNKNOWN="$SANDBOX/unknown"
 BIN="$SANDBOX/bin"
 OUT="$SANDBOX/claude.out"
 CAPABILITIES_OUT="$SANDBOX/capabilities.out"
+PROVIDER_OUT="$SANDBOX/provider.out"
 mkdir -p "$HOME_DIR" "$PROJECT" "$UNKNOWN" "$BIN"
 
 cat > "$BIN/claude" <<'EOF'
@@ -42,6 +43,17 @@ EOF
 chmod +x "$BIN/minimax-capabilities"
 export PM_MINIMAX_CAPABILITIES_TOOL="$BIN/minimax-capabilities"
 export CLAUDE_YOLO_CAPABILITIES_OUT="$CAPABILITIES_OUT"
+
+cat > "$BIN/pm-provider" <<'EOF'
+#!/bin/sh
+printf '<%s>\n' "$*" >>"${CLAUDE_YOLO_PROVIDER_OUT:?}"
+case "${1:-}" in
+  status) printf '%s\n' '{"active":false}' ;;
+esac
+EOF
+chmod +x "$BIN/pm-provider"
+export PM_PROVIDER_TOOL="$BIN/pm-provider"
+export CLAUDE_YOLO_PROVIDER_OUT="$PROVIDER_OUT"
 
 (
   cd "$UNKNOWN"
@@ -104,5 +116,13 @@ CLAUDE_YOLO_TEST_OUT="$OUT" \
 "$YOLO" capabilities install
 grep -Fxq '<install>' "$CAPABILITIES_OUT" ||
   fail "capabilities install was not routed to the capability tool"
+
+HOME="$HOME_DIR" \
+PATH="$BIN:$PATH" \
+PM_HUB_HOME="$HUB" \
+CLAUDE_YOLO_TEST_OUT="$OUT" \
+"$YOLO" provider status
+grep -Fxq '<status>' "$PROVIDER_OUT" ||
+  fail "provider status was not routed to pm-provider"
 
 echo "PASS: Claude YOLO entrypoint"

@@ -12,6 +12,7 @@ from pathlib import Path
 
 MAX_CONTEXT_CHARS = 9_000
 COMMAND_TIMEOUT_SECONDS = 5
+PROVIDER_TIMEOUT_SECONDS = 2
 
 
 def run_hub(tool: str, *args: str) -> subprocess.CompletedProcess[str]:
@@ -27,6 +28,44 @@ def run_hub(tool: str, *args: str) -> subprocess.CompletedProcess[str]:
         )
     except (subprocess.TimeoutExpired, OSError):
         return subprocess.CompletedProcess([tool, *args], 124, "", "command failed")
+
+
+def provider_context() -> str:
+    tool = os.environ.get(
+        "PM_PROVIDER_TOOL",
+        str(Path(__file__).resolve().with_name("pm-provider.py")),
+    )
+    try:
+        result = subprocess.run(
+            [tool, "status", "--json"],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+            timeout=PROVIDER_TIMEOUT_SECONDS,
+        )
+        status = json.loads(result.stdout) if result.returncode == 0 else {}
+    except (subprocess.TimeoutExpired, OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(status, dict) or not status.get("active"):
+        return ""
+    mode = status.get("mode") if isinstance(status.get("mode"), str) else "unknown"
+    current = (
+        status.get("current_provider")
+        if isinstance(status.get("current_provider"), str)
+        else "none"
+    )
+    cooldowns = status.get("cooldowns")
+    cooldown_ids = (
+        sorted(key for key in cooldowns if isinstance(key, str))
+        if isinstance(cooldowns, dict)
+        else []
+    )
+    cooldown_label = ",".join(cooldown_ids) if cooldown_ids else "none"
+    return (
+        f"Provider routing: mode={mode}; current={current}; "
+        f"cooldowns={cooldown_label}"
+    )
 
 
 def main() -> int:
@@ -77,6 +116,9 @@ def main() -> int:
         features = subprocess.CompletedProcess(feature_args, 124, "", "command failed")
     if features.returncode == 0:
         context += "\n\n## Feature Dashboard\n" + features.stdout
+    provider = provider_context()
+    if provider:
+        context += "\n\n## Provider\n" + provider
     output = {
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",

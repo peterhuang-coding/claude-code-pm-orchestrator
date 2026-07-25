@@ -34,7 +34,9 @@ wait_file() {
 }
 wait_router() {
   i=0
-  until curl --noproxy '*' -fsS "http://127.0.0.1:$router_port/_pm/health" >"$TMP/health" 2>/dev/null; do
+  until curl --noproxy '*' -fsS \
+    -H 'Authorization: Bearer local-secret-token' \
+    "http://127.0.0.1:$router_port/_pm/health" >"$TMP/health" 2>/dev/null; do
     if ! kill -0 "$router_pid" 2>/dev/null; then
       safe_log_tail "$TMP/router.log"
       fail "router exited before becoming healthy"

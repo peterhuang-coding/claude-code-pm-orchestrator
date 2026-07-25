@@ -16,6 +16,7 @@ fail() {
 SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/launch-claude-test.XXXXXX")
 trap 'rm -rf "$SANDBOX"' EXIT HUP INT TERM
 OUT="$SANDBOX/result"
+PROVIDER_OUT="$SANDBOX/provider.out"
 
 cat > "$SANDBOX/claude" <<'EOF'
 #!/bin/sh
@@ -40,8 +41,27 @@ set -eu
 EOF
 chmod +x "$SANDBOX/claude"
 
+cat >"$SANDBOX/pm-provider" <<'EOF'
+#!/bin/sh
+set -eu
+case "$1" in
+  status)
+    printf '{"active":%s}\n' "${PM_TEST_PROVIDER_ACTIVE:-false}"
+    ;;
+  exec)
+    shift
+    printf 'provider-exec=<%s>\n' "$*" >"${PROVIDER_LAUNCH_TEST_OUT:?}"
+    exec "$@"
+    ;;
+  *) exit 2 ;;
+esac
+EOF
+chmod +x "$SANDBOX/pm-provider"
+
 PATH="$SANDBOX:$PATH" \
 CLAUDE_LAUNCH_TEST_OUT="$OUT" \
+PROVIDER_LAUNCH_TEST_OUT="$PROVIDER_OUT" \
+PM_PROVIDER_TOOL="$SANDBOX/pm-provider" \
 ANTHROPIC_AUTH_TOKEN=auth-value \
 CLAUDE_CODE_OAUTH_TOKEN=oauth-value \
 CLAUDE_CODE_EFFORT_LEVEL=xhigh \
@@ -74,6 +94,18 @@ grep -Fxq "PM_HANDOFF_TOOL=$(dirname "$LAUNCHER")/pm-handoff.sh" "$OUT" || fail 
 grep -Fxq "PM_HUB_TOOL=$(dirname "$LAUNCHER")/pm-hub.sh" "$OUT" || fail "Hub tool path missing"
 grep -Fxq "PM_CLAUDE_LAUNCHER=$LAUNCHER" "$OUT" || fail "neutral launcher path missing"
 grep -Fxq 'ARGS=<--permission-mode><bypassPermissions><--name><test-session>' "$OUT" || fail "permission arguments incorrect"
+[ ! -e "$PROVIDER_OUT" ] || fail "inactive provider unexpectedly routed Claude"
+
+PATH="$SANDBOX:$PATH" \
+CLAUDE_LAUNCH_TEST_OUT="$OUT" \
+PROVIDER_LAUNCH_TEST_OUT="$PROVIDER_OUT" \
+PM_PROVIDER_TOOL="$SANDBOX/pm-provider" \
+PM_TEST_PROVIDER_ACTIVE=true \
+"$LAUNCHER" --name routed-session
+grep -Fq 'provider-exec=<claude --permission-mode bypassPermissions --name routed-session>' "$PROVIDER_OUT" ||
+  fail "active provider did not route Claude through provider exec"
+grep -Fq 'ARGS=<--permission-mode><bypassPermissions><--name><routed-session>' "$OUT" ||
+  fail "routed Claude arguments are incorrect"
 
 PROJECT="$SANDBOX/project"
 HUB="$SANDBOX/hub"
@@ -84,6 +116,7 @@ PM_HUB_HOME="$HUB" "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-hub.sh" regi
 PATH="$SANDBOX:$PATH" \
 CLAUDE_LAUNCH_TEST_OUT="$OUT" \
 PM_HUB_HOME="$HUB" \
+PM_PROVIDER_TOOL="$SANDBOX/pm-provider" \
 "$ENTRYPOINT" "$PROJECT" --name cold-start
 
 grep -Fq 'ARGS=<--permission-mode><bypassPermissions><--name><cold-start><' "$OUT" || fail "cold-start prompt was not passed"
@@ -94,11 +127,12 @@ ln -s "$ENTRYPOINT" "$SANDBOX/bin/claude-pm"
 PATH="$SANDBOX:$PATH" \
 CLAUDE_LAUNCH_TEST_OUT="$OUT" \
 PM_HUB_HOME="$HUB" \
+PM_PROVIDER_TOOL="$SANDBOX/pm-provider" \
 "$SANDBOX/bin/claude-pm" "$PROJECT" --name symlink-start
 grep -Fq 'ARGS=<--permission-mode><bypassPermissions><--name><symlink-start><' "$OUT" || fail "symlinked entrypoint failed"
 
 for resume_flag in --continue -c --resume -r --from-pr; do
-  if PATH="$SANDBOX:$PATH" CLAUDE_LAUNCH_TEST_OUT="$OUT" PM_HUB_HOME="$HUB" \
+  if PATH="$SANDBOX:$PATH" CLAUDE_LAUNCH_TEST_OUT="$OUT" PM_HUB_HOME="$HUB" PM_PROVIDER_TOOL="$SANDBOX/pm-provider" \
     "$ENTRYPOINT" "$PROJECT" "$resume_flag" old-session >/dev/null 2>&1
   then
     fail "resume flag was accepted: $resume_flag"
