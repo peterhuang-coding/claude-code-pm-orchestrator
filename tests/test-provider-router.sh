@@ -486,7 +486,7 @@ start_mock minimax; start_mock glm; start_mock deepseek
 router_port=$(node -e "const s=require('net').createServer();s.listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")
 cat >"$TMP/home/config.json" <<EOF
 {"version":1,"listen":{"host":"127.0.0.1","port":$router_port},"providers":[
-{"id":"minimax","base_url":"http://127.0.0.1:$minimax_port/anthropic","model":"MiniMax-M2.7","auth_scheme":"bearer"},
+{"id":"minimax","base_url":"http://127.0.0.1:$minimax_port/anthropic","model":"MiniMax-M3","auth_scheme":"bearer"},
 {"id":"glm","base_url":"http://127.0.0.1:$glm_port","model":"glm-5.2","auth_scheme":"bearer"},
 {"id":"deepseek","base_url":"http://127.0.0.1:$deepseek_port/anthropic","model":"deepseek-v4-pro","auth_scheme":"bearer"}],
 "retry":{"network":1,"server":1},"cooldown_seconds":{"network":1,"auth":1,"quota":1,"rate_limit":1,"server":1,"stream":30}}
@@ -510,7 +510,7 @@ if [ "$FILTER" = stream ]; then
 fi
 
 # Healthy priority and path/query/header/model preservation.
-request '/v1/messages?trace=1'; assert_case 200 minimax MiniMax-M2.7
+request '/v1/messages?trace=1'; assert_case 200 minimax MiniMax-M3
 
 # Quota fallback through each provider.
 write_scenario minimax '[{"status":402,"body":{"error":{"type":"quota"}}}]'
@@ -529,13 +529,13 @@ request '/v1/messages?trace=1'; assert_case 200 glm glm-5.2
 write_scenario minimax '[{"status":400,"body":{"error":{"type":"invalid_request_error","code":"model_context_window_exceeded"}}}]'
 write_scenario glm '[]'; write_scenario deepseek '[]'
 restart_router
-request '/v1/messages?trace=1'; assert_case 400 minimax MiniMax-M2.7
+request '/v1/messages?trace=1'; assert_case 400 minimax MiniMax-M3
 [ ! -s "$TMP/glm.records" ] || fail "context error fell back"
 
 # Other request errors also do not fall back.
 write_scenario minimax '[{"status":418,"body":{"error":{"type":"invalid_request"}}}]'
 write_scenario glm '[]'; write_scenario deepseek '[]'; restart_router
-request '/v1/messages?trace=1'; assert_case 418 minimax MiniMax-M2.7
+request '/v1/messages?trace=1'; assert_case 418 minimax MiniMax-M3
 [ ! -s "$TMP/glm.records" ] || fail "request error fell back"
 
 # Auth, rate limit, server, and network categories fall back; retryable failures retry once first.
@@ -600,7 +600,7 @@ assert b["error"]["upstream_status"]==429, b
 assert b["error"]["upstream_error_type"]=="rate_limit_error", b
 assert b["error"]["request_id"]=="final-rate-id", b
 assert len(r["body"]) < 65536
-models={"minimax":"MiniMax-M2.7","glm":"glm-5.2","deepseek":"deepseek-v4-pro"}
+models={"minimax":"MiniMax-M3","glm":"glm-5.2","deepseek":"deepseek-v4-pro"}
 for provider in ("minimax","glm","deepseek"):
     rows=[json.loads(x) for x in (pathlib.Path(sys.argv[2])/f"{provider}.records").read_text().splitlines()]
     assert rows and all(row["auth_valid"] is True for row in rows), (provider,rows)
@@ -645,7 +645,7 @@ python3 - "$TMP/minimax.records" <<'PY'
 import json,sys
 r=json.loads(open(sys.argv[1]).readline())
 assert r["path"]=="/anthropic/v1/messages/count_tokens?trace=1", r
-assert r["model"]=="MiniMax-M2.7"
+assert r["model"]=="MiniMax-M3"
 PY
 
 # Auto mode skips active cooldowns and providers without a credential.

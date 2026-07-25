@@ -52,6 +52,17 @@ description: Use when product or engineering work needs PM-style decomposition, 
 
 Agent Team 最多 5 名成员（含 lead），按 Product、Tech、Dev、Test、Review 选择必要角色。并行编辑必须分配独立 worktree 和互斥文件所有权。模型、API 和供应商继承当前 Claude Code 配置，本 Skill 不绑定模型。
 
+### MiniMax Ultra 能力层
+
+启动器会调用 `install-minimax-capabilities.sh ensure` 做幂等检查。配置完成后：
+
+- 主编码模型由 provider router 优先选择中国区 `MiniMax-M3`。
+- `mmx-cli` Skill 提供文本、图片、视频、语音、音乐、视觉理解和搜索。
+- `minimax-skills` 插件提供多模态、音乐、文档和开发场景工作流。
+
+生成媒体会消耗 MiniMax Token Plan 额度；Agent 必须使用非交互参数、把产物
+保存到当前项目的明确目录，并在 handoff 中记录命令、输出路径和验证结果。
+
 ## 2. 适用场景
 
 - 需求分析、产品方案、技术调研

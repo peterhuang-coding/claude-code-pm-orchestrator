@@ -176,7 +176,7 @@ assert config["providers"] == [
     {
         "id": "minimax",
         "base_url": "https://api.minimaxi.com/anthropic",
-        "model": "MiniMax-M2.7",
+        "model": "MiniMax-M3",
         "auth_scheme": "bearer",
     },
     {

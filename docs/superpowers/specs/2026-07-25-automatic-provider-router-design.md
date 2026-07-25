@@ -24,7 +24,7 @@ Profiles contain public routing metadata only:
 
 | Priority | ID | Base URL | Model |
 | --- | --- | --- | --- |
-| 1 | `minimax` | `https://api.minimaxi.com/anthropic` | `MiniMax-M2.7` |
+| 1 | `minimax` | `https://api.minimaxi.com/anthropic` | `MiniMax-M3` |
 | 2 | `glm` | `https://api.sfkey.cn` | `glm-5.2` |
 | 3 | `deepseek` | `https://api.deepseek.com/anthropic` | `deepseek-v4-pro` |
 

@@ -88,7 +88,7 @@ Create exact profile IDs and defaults:
     {
       "id": "minimax",
       "base_url": "https://api.minimaxi.com/anthropic",
-      "model": "MiniMax-M2.7",
+      "model": "MiniMax-M3",
       "auth_scheme": "bearer"
     },
     {
@@ -179,7 +179,7 @@ The helper accepts a port and scenario file. For each request it records only mo
 
 Start three mock servers and the router with a temporary config ordered `minimax`, `glm`, `deepseek`. Send an Anthropic request to the router and assert:
 
-- all healthy: only MiniMax receives `MiniMax-M2.7`;
+- all healthy: only MiniMax receives `MiniMax-M3`;
 - MiniMax 402: GLM receives `glm-5.2`;
 - MiniMax and GLM 402: DeepSeek receives `deepseek-v4-pro`;
 - MiniMax context-window 400: GLM receives nothing;

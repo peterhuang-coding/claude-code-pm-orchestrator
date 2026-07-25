@@ -39,6 +39,7 @@ SOURCE_YOLO=$(CDPATH= cd -- "$SCRIPT_DIR/../.claude/skills/pm-orchestrator/scrip
 [ ! -e "$TARGET/skills/pm-orchestrator/scripts/launch-claude-glm.sh" ] || fail "legacy GLM launcher was not removed"
 [ ! -e "$TARGET/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh" ] || fail "legacy DeepSeek launcher was not removed"
 [ -x "$TARGET/skills/pm-orchestrator/scripts/install-global.sh" ] || fail "installer was not installed"
+[ -x "$TARGET/skills/pm-orchestrator/scripts/install-minimax-capabilities.sh" ] || fail "MiniMax capabilities installer was not installed"
 [ -f "$TARGET/commands/leader-task.md" ] || fail "leader-task command was not installed"
 [ -f "$TARGET/commands/leader-resume.md" ] || fail "leader-resume command was not installed"
 [ -f "$TARGET/commands/goal.md" ] || fail "goal command was not installed"

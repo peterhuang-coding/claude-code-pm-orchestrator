@@ -12,6 +12,19 @@ From this repository:
 
 This installs only the PM orchestrator commands, agents, templates, and skill into `~/.claude`. It does not modify `~/.claude/settings.json` or credentials. A project-local copy remains supported and takes precedence.
 
+Install or repair the MiniMax Ultra capability layer:
+
+```bash
+$HOME/.claude/skills/pm-orchestrator/scripts/install-minimax-capabilities.sh ensure
+$HOME/.claude/skills/pm-orchestrator/scripts/install-minimax-capabilities.sh status
+```
+
+The installer selects the China endpoint and `MiniMax-M3`, installs the official
+`mmx-cli` Skill for text, image, video, speech, music, vision, and search, and
+enables the official `minimax-skills` Claude Code plugin. It reads the MiniMax
+credential from macOS Keychain service `claude-pm-provider-router`, account
+`minimax`; credentials are never stored in this repository.
+
 ## Start Claude Code
 
 ```bash

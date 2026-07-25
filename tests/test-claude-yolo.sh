@@ -20,6 +20,7 @@ PROJECT="$SANDBOX/project"
 UNKNOWN="$SANDBOX/unknown"
 BIN="$SANDBOX/bin"
 OUT="$SANDBOX/claude.out"
+CAPABILITIES_OUT="$SANDBOX/capabilities.out"
 mkdir -p "$HOME_DIR" "$PROJECT" "$UNKNOWN" "$BIN"
 
 cat > "$BIN/claude" <<'EOF'
@@ -34,6 +35,14 @@ set -eu
 EOF
 chmod +x "$BIN/claude"
 
+cat > "$BIN/minimax-capabilities" <<'EOF'
+#!/bin/sh
+printf '<%s>\n' "$*" >"${CLAUDE_YOLO_CAPABILITIES_OUT:?}"
+EOF
+chmod +x "$BIN/minimax-capabilities"
+export PM_MINIMAX_CAPABILITIES_TOOL="$BIN/minimax-capabilities"
+export CLAUDE_YOLO_CAPABILITIES_OUT="$CAPABILITIES_OUT"
+
 (
   cd "$UNKNOWN"
   HOME="$HOME_DIR" \
@@ -44,6 +53,8 @@ chmod +x "$BIN/claude"
 )
 
 [ -x "$HOME_DIR/.claude/bin/claude-pm" ] || fail "Skills were not synchronized before launch"
+grep -Fxq '<ensure>' "$CAPABILITIES_OUT" ||
+  fail "MiniMax capabilities were not ensured before launch"
 grep -Fxq "PWD=$HUB" "$OUT" || fail "unknown directory did not fall back to Hub"
 grep -Fq 'ARGS=<--permission-mode><bypassPermissions><--name><unknown-start><' "$OUT" || fail "YOLO launch omitted bypass permissions"
 

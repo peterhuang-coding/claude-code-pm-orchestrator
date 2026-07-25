@@ -14,6 +14,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$SCRIPT")" && pwd -P)
 INSTALLER="$SCRIPT_DIR/install-global.sh"
 HUB_TOOL="$SCRIPT_DIR/pm-hub.sh"
 CONFIGURATOR="$SCRIPT_DIR/configure-claude-user.py"
+CAPABILITIES_TOOL=${PM_MINIMAX_CAPABILITIES_TOOL:-"$SCRIPT_DIR/install-minimax-capabilities.sh"}
 
 [ -x "$INSTALLER" ] || {
   echo "claude-yolo: PM Orchestrator source is unavailable: $INSTALLER" >&2
@@ -21,6 +22,9 @@ CONFIGURATOR="$SCRIPT_DIR/configure-claude-user.py"
 }
 
 "$INSTALLER" >/dev/null
+if [ -x "$CAPABILITIES_TOOL" ] && ! "$CAPABILITIES_TOOL" ensure; then
+  echo "claude-yolo: MiniMax multimodal capabilities are not fully configured." >&2
+fi
 python3 "$CONFIGURATOR"
 
 if [ "$#" -gt 0 ] && [ "$1" = board ]; then
