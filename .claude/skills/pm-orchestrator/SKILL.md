@@ -40,6 +40,18 @@ description: Use when product or engineering work needs PM-style decomposition, 
 
 冷启动只读取有界 Hub 摘要、PM handoff 元数据和 Git 状态，不恢复旧聊天。项目目录进入项目经理模式；Hub 根目录进入老板总控模式；未知目录必须先注册。
 
+### Agent View、Feature 与 Agent Team
+
+三层状态必须分清：
+
+- Feature 台账是长期事实源：保存在 Hub 的 `projects/<project-id>/features/`，跨聊天、跨重启记录验收、状态、证据和下一步。
+- Agent View 是全机器运行面板：`claude-yolo board` 查看后台会话的 Working、Needs Input 和 Ready for Review；机器重启后用 `claude-yolo respawn` 恢复可恢复会话。
+- Agent Team task list 是单次会话协作状态：适合一个复杂 Feature 内的成员通信，不能代替 Feature 台账，也不提供文件隔离。
+
+`SessionStart` hook 会为已注册项目自动注入有界冷启动上下文并重新加载 Skills。日常先用 `/today` 进行一小时巡检；需要持续跟踪的工作用 `/feature <需求>`。一个 Feature 默认由一个项目 PM 会话负责，复杂时才在会话内部创建 Agent Team。
+
+Agent Team 最多 5 名成员（含 lead），按 Product、Tech、Dev、Test、Review 选择必要角色。并行编辑必须分配独立 worktree 和互斥文件所有权。模型、API 和供应商继承当前 Claude Code 配置，本 Skill 不绑定模型。
+
 ## 2. 适用场景
 
 - 需求分析、产品方案、技术调研

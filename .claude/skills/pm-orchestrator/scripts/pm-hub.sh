@@ -117,8 +117,22 @@ project_id_for_path() {
         ;;
     esac
   done < "$HUB/config/projects.tsv"
-  [ -n "$BEST_ID" ] || return 1
-  printf '%s\t%s\n' "$BEST_ID" "$BEST_PATH"
+  if [ -n "$BEST_ID" ]; then
+    printf '%s\t%s\n' "$BEST_ID" "$BEST_PATH"
+    return 0
+  fi
+
+  CHECK_COMMON=$(git -C "$CHECK_PATH" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+  [ -n "$CHECK_COMMON" ] || return 1
+  while IFS='	' read -r PROJECT_ID PROJECT_PATH; do
+    [ -n "$PROJECT_ID" ] || continue
+    PROJECT_COMMON=$(git -C "$PROJECT_PATH" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+    [ -n "$PROJECT_COMMON" ] || continue
+    [ "$PROJECT_COMMON" = "$CHECK_COMMON" ] || continue
+    printf '%s\t%s\n' "$PROJECT_ID" "$PROJECT_PATH"
+    return 0
+  done < "$HUB/config/projects.tsv"
+  return 1
 }
 
 ensure_project_files() {
@@ -151,7 +165,7 @@ register_project() {
   if LINE=$(project_id_for_path "$PROJECT_PATH" 2>/dev/null); then
     EXISTING_ID=$(printf '%s\n' "$LINE" | cut -f1)
     EXISTING_PATH=$(printf '%s\n' "$LINE" | cut -f2-)
-    [ "$EXISTING_PATH" != "$PROJECT_PATH" ] || die "project path is already registered as $EXISTING_ID"
+    die "project path belongs to registered project $EXISTING_ID at $EXISTING_PATH"
   fi
 
   printf '%s\t%s\n' "$ID" "$PROJECT_PATH" >> "$HUB/config/projects.tsv"

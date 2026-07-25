@@ -13,6 +13,7 @@ done
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$SCRIPT")" && pwd -P)
 INSTALLER="$SCRIPT_DIR/install-global.sh"
 HUB_TOOL="$SCRIPT_DIR/pm-hub.sh"
+CONFIGURATOR="$SCRIPT_DIR/configure-claude-user.py"
 
 [ -x "$INSTALLER" ] || {
   echo "claude-yolo: PM Orchestrator source is unavailable: $INSTALLER" >&2
@@ -20,6 +21,16 @@ HUB_TOOL="$SCRIPT_DIR/pm-hub.sh"
 }
 
 "$INSTALLER" >/dev/null
+python3 "$CONFIGURATOR"
+
+if [ "$#" -gt 0 ] && [ "$1" = board ]; then
+  shift
+  exec claude agents --permission-mode bypassPermissions "$@"
+elif [ "$#" -gt 0 ] && [ "$1" = respawn ]; then
+  shift
+  exec claude respawn --all "$@"
+fi
+
 GLOBAL_ENTRY="$HOME/.claude/bin/claude-pm"
 [ -x "$GLOBAL_ENTRY" ] || {
   echo "claude-yolo: global Claude PM entrypoint was not installed" >&2

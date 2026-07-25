@@ -45,3 +45,5 @@ HUB_TOOL=${PM_HUB_TOOL:-"$HOME/.claude/skills/pm-orchestrator/scripts/pm-hub.sh"
 8. 完成后必须执行 `/wrap-up`，再向用户汇报。
 
 不得以“需要确认计划”为普通暂停理由。真实阻塞时写入 Hub 和 handoff，并给出已尝试事项与唯一下一步。
+
+如果任务会跨越一个工作时段、需要独立进度追踪或包含多个验收项，转用 `/feature $ARGUMENTS` 建立 Feature 台账；小任务继续直接执行，避免把所有工作都膨胀成 Feature。

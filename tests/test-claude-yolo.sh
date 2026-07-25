@@ -69,4 +69,19 @@ CLAUDE_YOLO_TEST_OUT="$OUT" \
 "$YOLO" hub --name hub-start
 grep -Fxq "PWD=$HUB" "$OUT" || fail "explicit hub target failed"
 
+HOME="$HOME_DIR" \
+PATH="$BIN:$PATH" \
+PM_HUB_HOME="$HUB" \
+CLAUDE_YOLO_TEST_OUT="$OUT" \
+"$YOLO" board
+grep -Fxq "PWD=$PWD" "$OUT" || fail "Agent View changed directory unexpectedly"
+grep -Fq 'ARGS=<agents><--permission-mode><bypassPermissions>' "$OUT" || fail "Agent View arguments are incorrect"
+
+HOME="$HOME_DIR" \
+PATH="$BIN:$PATH" \
+PM_HUB_HOME="$HUB" \
+CLAUDE_YOLO_TEST_OUT="$OUT" \
+"$YOLO" respawn
+grep -Fq 'ARGS=<respawn><--all>' "$OUT" || fail "respawn arguments are incorrect"
+
 echo "PASS: Claude YOLO entrypoint"
