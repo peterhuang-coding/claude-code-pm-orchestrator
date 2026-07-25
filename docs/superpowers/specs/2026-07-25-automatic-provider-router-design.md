@@ -71,6 +71,44 @@ One daemon serves concurrent local Claude Code sessions. A lock and PID file pre
 
 `claude-yolo` supplies the localhost endpoint and virtual model only to the process it launches. Plain `claude` remains model-neutral and does not silently receive a paid credential.
 
+## Portable Installation
+
+The installed runtime must not depend on the repository checkout remaining at a particular `/Volumes` or `/Users` path. Installation copies a versioned runtime into `~/.claude/skills/pm-orchestrator` and installs the executable entrypoint into a configurable user bin directory, defaulting to `~/.local/bin`. The entrypoint must target the installed runtime, never symlink back to the source checkout.
+
+Machine-specific paths live in `~/.claude/pm-orchestrator/config.json`, not repository files:
+
+```json
+{
+  "hub_home": "~/.claude/pm-hub",
+  "source_checkout": "~/claude-code-pm-orchestrator"
+}
+```
+
+The default Hub is portable under the user's home directory. This Mac may explicitly retain `/Volumes/SanDisk2TB/claude-pm-hub`; the installer records that choice without making it a package default. All scripts resolve `PM_HUB_HOME` in this order: process environment, user config, portable home default.
+
+The root installer supports:
+
+```bash
+./install.sh
+./install.sh --hub /Volumes/SanDisk2TB/claude-pm-hub
+./install.sh --bin-dir "$HOME/.local/bin"
+```
+
+It validates Claude Code, Node.js, Python 3, Keychain availability on macOS, writable destinations, and shell `PATH`. It modifies no provider credential and starts no paid request.
+
+Cross-machine setup is explicit and testable:
+
+```bash
+gh auth login
+gh repo clone peterhuang-coding/claude-code-pm-orchestrator \
+  "$HOME/claude-code-pm-orchestrator"
+cd "$HOME/claude-code-pm-orchestrator"
+./install.sh
+claude-yolo doctor
+```
+
+`claude-yolo doctor` reports runtime version, installed/source paths, Hub access, required executables, Keychain availability, provider configuration booleans, router health, and PATH status without exposing credentials. `claude-yolo update` performs a fast-forward-only update from the recorded source checkout, reruns the installer, and refuses dirty or divergent source state instead of overwriting user work.
+
 ## Routing State
 
 The router starts in `auto` mode. It selects the first configured provider that is not cooling down. A successful request makes that provider the current healthy provider. Provider state contains only:
@@ -180,6 +218,8 @@ Real-provider smoke tests are opt-in and send only a minimal prompt. They must n
 7. No provider key appears in settings, process arguments, logs, Hub files, repository files, or test output.
 8. Status and override commands work without restarting the router manually.
 9. Existing PM Orchestrator tests remain green.
+10. A clean-home install from an arbitrary checkout path runs without `/Volumes` or developer-home references.
+11. `claude-yolo doctor` identifies missing PATH, runtime, Hub, and provider prerequisites without printing secrets.
 
 ## Operational Limits
 

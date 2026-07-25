@@ -18,6 +18,11 @@
 - Modify `.claude/skills/pm-orchestrator/scripts/launch-claude.sh`: launch Claude through `pm-provider.py exec` when routing is active.
 - Modify `.claude/skills/pm-orchestrator/scripts/claude-yolo`: route `provider` subcommands before normal Hub path selection.
 - Modify `.claude/skills/pm-orchestrator/scripts/install-global.sh`: install the template and preserve executable modes.
+- Create `install.sh`: portable root installer with Hub/bin options and dependency checks.
+- Create `.claude/skills/pm-orchestrator/scripts/pm-doctor.py`: sanitized installation and runtime diagnostics.
+- Modify `.claude/skills/pm-orchestrator/scripts/pm-feature.sh`: obtain the resolved Hub from `pm-hub.sh`.
+- Modify `.claude/skills/pm-orchestrator/scripts/pm-team-event.py`: obtain the resolved Hub from `pm-hub.sh`.
+- Modify `.claude/commands/idea.md`: remove external-disk assumptions.
 - Modify `.claude/skills/pm-orchestrator/scripts/pm-session-start.py`: append bounded provider status facts.
 - Modify `.claude/skills/pm-orchestrator/SKILL.md`: define provider routing and operational boundaries.
 - Modify `README.md` and `.claude/skills/pm-orchestrator/README.md`: document setup and daily commands.
@@ -25,6 +30,7 @@
 - Create `tests/test-provider-control.sh`: Keychain abstraction, migration, status, activation, and no-secret tests.
 - Create `tests/test-provider-router.sh`: priority, fallback, cooldown, streaming, concurrency, and bounded error tests.
 - Modify `tests/test-launch-claude.sh`, `tests/test-claude-yolo.sh`, `tests/test-global-install.sh`, and `tests/test-session-start.sh`: integration contracts.
+- Create `tests/test-portable-install.sh`: arbitrary-checkout, clean-home, doctor, update, and no-hardcoded-path contracts.
 
 ### Task 1: Public Configuration And Keychain Boundary
 
@@ -580,13 +586,27 @@ git commit -m "feat: route Claude YOLO through provider fallback"
 ### Task 7: Installation, Documentation, And Full Verification
 
 **Files:**
+- Create: `install.sh`
+- Create: `.claude/skills/pm-orchestrator/scripts/pm-doctor.py`
 - Modify: `.claude/skills/pm-orchestrator/scripts/install-global.sh`
+- Modify: `.claude/skills/pm-orchestrator/scripts/pm-hub.sh`
+- Modify: `.claude/skills/pm-orchestrator/scripts/pm-feature.sh`
+- Modify: `.claude/skills/pm-orchestrator/scripts/pm-team-event.py`
+- Modify: `.claude/commands/idea.md`
 - Modify: `.claude/skills/pm-orchestrator/SKILL.md`
 - Modify: `.claude/skills/pm-orchestrator/README.md`
 - Modify: `README.md`
 - Modify: `tests/test-global-install.sh`
+- Create: `tests/test-portable-install.sh`
 
 - [ ] **Step 1: Add failing global-install assertions**
+
+Copy the repository to a temporary path that contains spaces and does not contain `/Volumes/SanDisk2TB`. With isolated `HOME`, run:
+
+```bash
+./install.sh --hub "$HOME/custom-hub" --bin-dir "$HOME/.local/bin"
+"$HOME/.local/bin/claude-yolo" doctor --json
+```
 
 Verify installation includes:
 
@@ -596,7 +616,13 @@ pm-provider-router.js
 provider-router-config.json
 ```
 
-and does not modify real settings, Keychain, or credentials during installation.
+Also assert:
+
+- the executable resolves to the installed runtime under `~/.claude`, not the source checkout;
+- deleting the temporary source copy does not break `claude-yolo doctor`;
+- user config records the selected Hub with `~` expansion handled safely;
+- no installed file contains the test checkout path, `/Volumes/SanDisk2TB`, or `/Users/peter_mini`;
+- installation does not modify real settings, Keychain, or credentials.
 
 - [ ] **Step 2: Run and verify RED**
 
@@ -604,15 +630,43 @@ Run:
 
 ```bash
 sh tests/test-global-install.sh
+sh tests/test-portable-install.sh
 ```
 
-Expected: missing provider router files.
+Expected: missing portable root installer or doctor.
 
 - [ ] **Step 3: Update installer and documentation**
+
+Create root `install.sh` with exact options:
+
+```text
+--hub <path>
+--bin-dir <path>
+--source-checkout <path>
+```
+
+It copies the runtime, commands, agents, templates, and Skill into `~/.claude`; writes `~/.claude/pm-orchestrator/config.json` atomically; and creates `claude-yolo` in the selected bin directory pointing only to the installed copy. It prints a concrete `export PATH=...` line when the selected bin is absent from PATH, but does not silently edit shell profiles.
+
+Change `pm-hub.sh` to resolve its Hub from `PM_HUB_HOME`, then user config, then `~/.claude/pm-hub`. Existing users preserve the external-disk Hub through the user config written during upgrade. `pm-feature.sh` and `pm-team-event.py` must call `pm-hub.sh init` to obtain that canonical resolved path instead of carrying their own defaults. Remove external-disk assumptions from the Skill, commands, current READMEs, and every installed script; historical design documents remain historical and are not installed.
+
+Implement:
+
+```text
+claude-yolo doctor [--json]
+claude-yolo update
+```
+
+`doctor` performs read-only checks and redacts all credential values. `update` reads `source_checkout`, requires a clean Git worktree, runs `git pull --ff-only`, and reruns `install.sh` with the recorded Hub and bin directory. It fails with an actionable message when GitHub authentication, source checkout, PATH, or dependencies are missing.
 
 Document:
 
 ```bash
+gh auth login
+gh repo clone peterhuang-coding/claude-code-pm-orchestrator \
+  "$HOME/claude-code-pm-orchestrator"
+cd "$HOME/claude-code-pm-orchestrator"
+./install.sh
+claude-yolo doctor
 claude-yolo provider setup
 claude-yolo provider status
 claude-yolo provider use <provider>
@@ -621,7 +675,7 @@ claude-yolo provider reset
 claude-yolo
 ```
 
-State clearly that setup requires freshly rotated MiniMax and sfkey credentials, DeepSeek is metered fallback, automatic fallback never replays a started stream, and `/imageinput` remains separate.
+State clearly that setup requires freshly rotated MiniMax and sfkey credentials, DeepSeek is metered fallback, automatic fallback never replays a started stream, `/imageinput` remains separate, and a checkout can live anywhere.
 
 - [ ] **Step 4: Run all automated verification**
 
