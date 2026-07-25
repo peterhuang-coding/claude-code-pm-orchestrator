@@ -104,6 +104,47 @@ function readState() {
   return state;
 }
 
+let currentState = readState();
+let stateMutationQueue = Promise.resolve();
+
+function cloneState(state) {
+  return {
+    active: Boolean(state.active),
+    mode: typeof state.mode === 'string' ? state.mode : 'auto',
+    cooldowns: Object.fromEntries(Object.entries(state.cooldowns || {}).map(([provider, cooldown]) => [
+      provider,
+      cooldown && typeof cooldown === 'object' ? { ...cooldown } : cooldown,
+    ])),
+    current_provider: typeof state.current_provider === 'string' ? state.current_provider : null,
+    last_transition: state.last_transition && typeof state.last_transition === 'object'
+      ? { ...state.last_transition }
+      : null,
+  };
+}
+
+function providerSnapshot() {
+  return stateMutationQueue.then(() => {
+    const snapshot = cloneState(currentState);
+    for (const cooldown of Object.values(snapshot.cooldowns)) {
+      if (cooldown && typeof cooldown === 'object') Object.freeze(cooldown);
+    }
+    Object.freeze(snapshot.cooldowns);
+    if (snapshot.last_transition) Object.freeze(snapshot.last_transition);
+    return Object.freeze(snapshot);
+  });
+}
+
+function queueStateMutation(mutate) {
+  const operation = stateMutationQueue.then(() => {
+    const next = cloneState(currentState);
+    mutate(next);
+    atomicWriteState(next);
+    currentState = next;
+  });
+  stateMutationQueue = operation;
+  return operation;
+}
+
 function atomicWriteState(state) {
   const temporary = path.join(HOME, `.state.json.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`);
   let descriptor = null;
@@ -181,12 +222,26 @@ function jsonResponse(response, status, value, extraHeaders = {}) {
   response.end(body);
 }
 
-function safeResponseHeaders(headers) {
+function streamResponseHeaders(headers) {
   const safe = {};
-  for (const name of ['content-type', 'retry-after', 'request-id', 'x-request-id']) {
+  for (const name of ['content-type', 'content-length', 'cache-control', 'content-encoding', 'retry-after', 'request-id', 'x-request-id']) {
     if (headers[name] !== undefined) safe[name] = headers[name];
   }
   return safe;
+}
+
+function bufferedResponseHeaders(headers, bodyLength) {
+  const safe = {};
+  for (const name of ['content-type', 'cache-control', 'retry-after', 'request-id', 'x-request-id']) {
+    if (headers[name] !== undefined) safe[name] = headers[name];
+  }
+  if (Number.isInteger(bodyLength)) safe['content-length'] = bodyLength;
+  return safe;
+}
+
+function hasBufferedEncoding(headers) {
+  const encoding = String(headers['content-encoding'] || '').trim().toLowerCase();
+  return encoding !== '' && encoding !== 'identity';
 }
 
 function upstreamHeaders(inbound, key, authScheme) {
@@ -249,82 +304,183 @@ function upstreamErrorType(body) {
   return match ? match[1] : null;
 }
 
-function transition(state, provider, category, status, headers) {
-  const now = Math.floor(Date.now() / 1000);
-  const configured = Number(config.cooldown_seconds && config.cooldown_seconds[category]) || 0;
-  const duration = category === 'rate_limit' ? Math.max(configured, retryAfterSeconds(headers)) : configured;
-  if (category !== 'success' && duration > 0) {
-    state.cooldowns[provider] = { reason: category, until: now + Math.min(MAX_RETRY_AFTER, duration) };
-  } else if (category === 'success') {
-    delete state.cooldowns[provider];
-    state.current_provider = provider;
-  }
-  state.last_transition = {
-    provider,
-    category,
-    status: Number.isInteger(status) ? status : null,
-    cooldown_until: state.cooldowns[provider] ? state.cooldowns[provider].until : null,
-    timestamp: now,
-    request_id: requestId(headers),
-  };
-  atomicWriteState(state);
+function transition(provider, category, status, headers) {
+  return queueStateMutation((state) => {
+    const now = Math.floor(Date.now() / 1000);
+    const configured = Number(config.cooldown_seconds && config.cooldown_seconds[category]) || 0;
+    const duration = category === 'rate_limit' ? Math.max(configured, retryAfterSeconds(headers)) : configured;
+    if (category !== 'success' && duration > 0) {
+      state.cooldowns[provider] = { reason: category, until: now + Math.min(MAX_RETRY_AFTER, duration) };
+    } else if (category === 'success') {
+      delete state.cooldowns[provider];
+      state.current_provider = provider;
+    }
+    state.last_transition = {
+      provider,
+      category,
+      status: Number.isInteger(status) ? status : null,
+      cooldown_until: state.cooldowns[provider] ? state.cooldowns[provider].until : null,
+      timestamp: now,
+      request_id: requestId(headers),
+    };
+  });
 }
 
-function backoff(attempt) {
+function clientAbortResult() {
+  return { category: 'client_abort', status: null, headers: {}, body: Buffer.alloc(0), committed: false };
+}
+
+function backoff(attempt, signal) {
   const override = Number(process.env.PM_PROVIDER_BACKOFF_MS);
   const delays = Number.isFinite(override) && override >= 0 ? [override, override] : [250, 750];
-  return new Promise((resolve) => setTimeout(resolve, delays[Math.min(attempt, delays.length - 1)]));
+  if (signal.aborted) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (completed) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      resolve(completed);
+    };
+    const onAbort = () => finish(false);
+    const timer = setTimeout(() => finish(true), delays[Math.min(attempt, delays.length - 1)]);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
-function upstreamOnce(profile, key, inbound, body) {
+function upstreamOnce(profile, key, inbound, body, downstream, signal) {
   return new Promise((resolve) => {
+    let settled = false;
+    let upstreamRequest = null;
+    let upstreamResponse = null;
+    let committed = false;
+    let downstreamClosed = signal.aborted || downstream.destroyed;
+    const settle = (result) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', onAbort);
+      resolve({ ...result, committed });
+    };
+    const onAbort = () => {
+      downstreamClosed = true;
+      if (upstreamResponse) upstreamResponse.destroy();
+      if (upstreamRequest) upstreamRequest.destroy();
+      settle(clientAbortResult());
+    };
+    if (signal.aborted) {
+      settle(clientAbortResult());
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+
     let target;
     try {
       target = joinedUrl(profile.base_url, inbound.url);
     } catch {
-      resolve({ category: 'network', status: null, headers: {}, body: Buffer.alloc(0) });
+      settle({ category: 'network', status: null, headers: {}, body: Buffer.alloc(0) });
       return;
     }
     const transport = target.protocol === 'https:' ? https : http;
-    const request = transport.request(target, {
+    upstreamRequest = transport.request(target, {
       method: inbound.method,
       headers: upstreamHeaders(inbound.headers, key, profile.auth_scheme),
     }, (response) => {
+      upstreamResponse = response;
       const chunks = [];
       let captured = 0;
+      let truncated = false;
+      let responseEnded = false;
+      const responseFailure = () => {
+        if (responseEnded || settled) return;
+        responseEnded = true;
+        settle({
+          category: committed ? 'stream' : 'network',
+          status: response.statusCode,
+          headers: response.headers,
+          body: Buffer.alloc(0),
+        });
+      };
+      response.on('error', responseFailure);
+      response.on('aborted', responseFailure);
+      response.on('close', () => {
+        if (!response.complete) responseFailure();
+      });
       response.on('data', (chunk) => {
-        if (response.statusCode < 400) {
-          chunks.push(chunk);
+        if (settled) return;
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          if (signal.aborted || downstreamClosed || downstream.destroyed || downstream.writableEnded) {
+            response.destroy();
+            settle(clientAbortResult());
+            return;
+          }
+          if (!committed) {
+            committed = true;
+            downstream.writeHead(response.statusCode, streamResponseHeaders(response.headers));
+          }
+          if (!downstream.write(chunk)) {
+            response.pause();
+            downstream.once('drain', () => {
+              if (!settled && !downstream.destroyed) response.resume();
+            });
+          }
         } else if (captured < MAX_ERROR) {
           const part = chunk.subarray(0, MAX_ERROR - captured);
           chunks.push(part);
           captured += part.length;
+          if (part.length < chunk.length) truncated = true;
+        } else {
+          truncated = true;
         }
       });
       response.on('end', () => {
-        const responseBody = response.statusCode >= 400 ? boundedBody(chunks) : Buffer.concat(chunks);
-        resolve({
+        if (responseEnded || settled) return;
+        responseEnded = true;
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          if (!downstreamClosed && !downstream.destroyed && !downstream.writableEnded) {
+            if (!committed) downstream.writeHead(response.statusCode, streamResponseHeaders(response.headers));
+            downstream.end();
+          }
+          settle({
+            category: downstreamClosed ? 'client_abort' : 'success',
+            status: response.statusCode,
+            headers: response.headers,
+            body: Buffer.alloc(0),
+          });
+          return;
+        }
+        const responseBody = boundedBody(chunks);
+        settle({
           category: classify(response.statusCode, responseBody),
           status: response.statusCode,
           headers: response.headers,
           body: responseBody,
+          truncated,
         });
       });
     });
-    request.on('error', () => resolve({ category: 'network', status: null, headers: {}, body: Buffer.alloc(0) }));
+    upstreamRequest.on('error', () => settle({
+      category: committed ? 'stream' : 'network',
+      status: upstreamResponse ? upstreamResponse.statusCode : null,
+      headers: upstreamResponse ? upstreamResponse.headers : {},
+      body: Buffer.alloc(0),
+    }));
     const timeout = Math.max(1, Math.min(120000, Number(process.env.PM_PROVIDER_UPSTREAM_TIMEOUT_MS) || 30000));
-    request.setTimeout(timeout, () => request.destroy());
-    request.end(body);
+    upstreamRequest.setTimeout(timeout, () => upstreamRequest.destroy());
+    upstreamRequest.end(body);
   });
 }
 
-async function tryProvider(profile, key, inbound, body) {
+async function tryProvider(profile, key, inbound, body, downstream, signal) {
   let attempt = 0;
   while (true) {
-    const result = await upstreamOnce(profile, key, inbound, body);
+    if (signal.aborted) return clientAbortResult();
+    const result = await upstreamOnce(profile, key, inbound, body, downstream, signal);
+    if (result.committed || result.category === 'client_abort') return result;
     const limit = Number(config.retry && config.retry[result.category]) || 0;
     if ((result.category === 'network' || result.category === 'server') && attempt < limit) {
-      await backoff(attempt++);
+      if (!await backoff(attempt++, signal)) return clientAbortResult();
+      if (signal.aborted) return clientAbortResult();
       continue;
     }
     return result;
@@ -340,7 +496,7 @@ function candidates(state) {
   });
 }
 
-async function routeMessages(inbound, response, rawBody) {
+async function routeMessages(inbound, response, rawBody, signal) {
   let parsed;
   try {
     parsed = JSON.parse(rawBody.toString('utf8'));
@@ -353,33 +509,57 @@ async function routeMessages(inbound, response, rawBody) {
     return;
   }
 
-  const state = readState();
+  if (signal.aborted) return;
+  const state = await providerSnapshot();
+  if (signal.aborted) return;
   const attempted = [];
   let lastFailure = null;
   for (const profile of candidates(state)) {
+    if (signal.aborted) return;
     const key = credential(profile.id);
     if (!key) continue;
+    if (signal.aborted) return;
     attempted.push(profile.id);
     const body = Buffer.from(JSON.stringify({ ...parsed, model: profile.model }));
-    const result = await tryProvider(profile, key, inbound, body);
+    const result = await tryProvider(profile, key, inbound, body, response, signal);
+    if (result.category === 'client_abort') return;
+    if (result.category === 'stream') {
+      await transition(profile.id, 'stream', result.status, result.headers);
+      if (!response.destroyed && !response.writableEnded) response.destroy();
+      return;
+    }
     if (result.category === 'success') {
-      transition(state, profile.id, 'success', result.status, result.headers);
-      response.writeHead(result.status, safeResponseHeaders(result.headers));
-      response.end(result.body);
+      await transition(profile.id, 'success', result.status, result.headers);
       return;
     }
     if (result.category === 'context' || result.category === 'request') {
-      transition(state, profile.id, result.category, result.status, result.headers);
-      response.writeHead(result.status, safeResponseHeaders(result.headers));
-      response.end(result.body);
+      await transition(profile.id, result.category, result.status, result.headers);
+      if (signal.aborted) return;
+      if (!response.destroyed && !response.writableEnded) {
+        if (result.truncated || hasBufferedEncoding(result.headers)) {
+          jsonResponse(response, result.status, {
+            error: {
+              type: 'upstream_error',
+              message: 'Upstream error response could not be relayed safely',
+              upstream_status: result.status,
+              request_id: requestId(result.headers),
+            },
+          }, bufferedResponseHeaders(result.headers));
+        } else {
+          response.writeHead(result.status, bufferedResponseHeaders(result.headers, result.body.length));
+          response.end(result.body);
+        }
+      }
       return;
     }
     lastFailure = result;
-    transition(state, profile.id, result.category, result.status, result.headers);
+    await transition(profile.id, result.category, result.status, result.headers);
+    if (signal.aborted) return;
     if (state.mode !== 'auto') break;
   }
+  if (signal.aborted) return;
   const finalStatus = lastFailure && Number.isInteger(lastFailure.status) ? lastFailure.status : 503;
-  const finalHeaders = lastFailure ? safeResponseHeaders(lastFailure.headers) : {};
+  const finalHeaders = lastFailure ? bufferedResponseHeaders(lastFailure.headers) : {};
   jsonResponse(response, finalStatus, {
     error: {
       type: 'providers_unavailable',
@@ -398,6 +578,14 @@ async function routeMessages(inbound, response, rawBody) {
 }
 
 const server = http.createServer((request, response) => {
+  const requestAbort = new AbortController();
+  const abortRequest = () => {
+    if (!requestAbort.signal.aborted) requestAbort.abort();
+  };
+  response.on('error', () => {});
+  response.on('close', () => {
+    if (!response.writableEnded) abortRequest();
+  });
   if (request.method === 'GET' && request.url.split('?')[0] === '/_pm/health') {
     jsonResponse(response, 200, { status: 'ok' });
     return;
@@ -416,6 +604,16 @@ const server = http.createServer((request, response) => {
   const chunks = [];
   let size = 0;
   let rejected = false;
+  request.on('error', () => {
+    rejected = true;
+    abortRequest();
+    if (!response.destroyed && !response.writableEnded) response.destroy();
+  });
+  request.on('aborted', () => {
+    rejected = true;
+    abortRequest();
+    if (!response.destroyed && !response.writableEnded) response.destroy();
+  });
   request.on('data', (chunk) => {
     size += chunk.length;
     if (size > MAX_INBOUND) {
@@ -427,9 +625,12 @@ const server = http.createServer((request, response) => {
     chunks.push(chunk);
   });
   request.on('end', () => {
-    if (!rejected) routeMessages(request, response, Buffer.concat(chunks)).catch(() => {
-      if (!response.headersSent) jsonResponse(response, 500, { error: { type: 'router_error' } });
-      else response.end();
+    if (!rejected) routeMessages(request, response, Buffer.concat(chunks), requestAbort.signal).catch(() => {
+      if (!response.destroyed && !response.writableEnded && !response.headersSent) {
+        jsonResponse(response, 500, { error: { type: 'router_error' } });
+      } else if (!response.destroyed && !response.writableEnded) {
+        response.destroy();
+      }
     });
   });
 });

@@ -80,14 +80,55 @@ const server = http.createServer((request, response) => {
         return;
       }
     }
-    const body = item.largeErrorBytes
-      ? JSON.stringify({ error: { type: item.errorType || 'large_error', message: 'X'.repeat(item.largeErrorBytes) } })
-      : typeof item.body === 'string' ? item.body : JSON.stringify(item.body ?? {});
     response.writeHead(item.status ?? 200, {
       'content-type': item.contentType ?? 'application/json',
       'x-request-id': item.requestId ?? 'mock-request',
       ...(item.headers ?? {}),
     });
+    if (Array.isArray(item.chunks)) {
+      let index = 0;
+      let timer = null;
+      let stopped = false;
+      const stop = (reason) => {
+        if (stopped) return;
+        stopped = true;
+        if (timer !== null) clearTimeout(timer);
+        fs.appendFileSync(`${recordsPath}.cleanup`, `${JSON.stringify({ reason, chunks_sent: index })}\n`, { mode: 0o600 });
+      };
+      response.once('close', () => stop('response_close'));
+      response.socket.once('close', () => stop('socket_close'));
+      const send = () => {
+        timer = null;
+        if (stopped || response.destroyed || response.socket.destroyed) {
+          stop('closed_before_send');
+          return;
+        }
+        if (item.abort_after_chunk === index) {
+          stop('abort_after_chunk');
+          response.socket.destroy();
+          return;
+        }
+        if (index >= item.chunks.length) {
+          stop('end');
+          response.end();
+          return;
+        }
+        const writable = response.write(String(item.chunks[index]));
+        index += 1;
+        if (!writable) {
+          response.once('drain', () => {
+            if (!stopped) timer = setTimeout(send, Math.max(0, Number(item.chunk_delay_ms) || 0));
+          });
+          return;
+        }
+        timer = setTimeout(send, Math.max(0, Number(item.chunk_delay_ms) || 0));
+      };
+      send();
+      return;
+    }
+    const body = item.largeErrorBytes
+      ? JSON.stringify({ error: { type: item.errorType || 'large_error', message: 'X'.repeat(item.largeErrorBytes) } })
+      : typeof item.body === 'string' ? item.body : JSON.stringify(item.body ?? {});
     response.end(body);
   });
 });
