@@ -11,12 +11,13 @@ const { execFileSync } = require('child_process');
 
 const SERVICE = 'claude-pm-provider-router';
 const MAX_INBOUND = 32 * 1024 * 1024;
+const MAX_CONTROL_BODY = 8 * 1024;
 const MAX_ERROR = 64 * 1024;
 const MAX_RETRY_AFTER = 24 * 60 * 60;
 const MAX_RETRIES = 3;
 const COOLDOWN_CATEGORIES = ['network', 'auth', 'quota', 'rate_limit', 'server', 'stream'];
 const HOME = path.resolve((process.env.PM_PROVIDER_HOME || '~/.claude/provider-router').replace(/^~/, os.homedir()));
-const CONFIG_PATH = path.join(HOME, 'config.json');
+const CONFIG_PATH = path.resolve(process.env.PM_PROVIDER_CONFIG || path.join(HOME, 'config.json'));
 const STATE_PATH = path.join(HOME, 'state.json');
 const DEFAULT_STATE = { active: false, mode: 'auto', cooldowns: {}, current_provider: null, last_transition: null };
 
@@ -220,6 +221,43 @@ function jsonResponse(response, status, value, extraHeaders = {}) {
     'content-length': body.length,
   });
   response.end(body);
+}
+
+function readControlBody(request, response, callback) {
+  const chunks = [];
+  let size = 0;
+  let rejected = false;
+  request.on('error', () => {
+    rejected = true;
+    if (!response.destroyed && !response.writableEnded) response.destroy();
+  });
+  request.on('data', (chunk) => {
+    size += chunk.length;
+    if (size > MAX_CONTROL_BODY) {
+      rejected = true;
+      chunks.length = 0;
+      if (!response.headersSent) {
+        jsonResponse(response, 413, { error: { type: 'control_request_too_large' } });
+      }
+      return;
+    }
+    if (!rejected) chunks.push(chunk);
+  });
+  request.on('end', () => {
+    if (rejected) return;
+    let body;
+    try {
+      body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    } catch {
+      jsonResponse(response, 400, { error: { type: 'invalid_control_request' } });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      jsonResponse(response, 400, { error: { type: 'invalid_control_request' } });
+      return;
+    }
+    callback(body);
+  });
 }
 
 function streamResponseHeaders(headers) {
@@ -586,16 +624,61 @@ const server = http.createServer((request, response) => {
   response.on('close', () => {
     if (!response.writableEnded) abortRequest();
   });
-  if (request.method === 'GET' && request.url.split('?')[0] === '/_pm/health') {
-    jsonResponse(response, 200, { status: 'ok' });
-    return;
-  }
   if (!timingSafeToken(request.headers.authorization)) {
     request.resume();
     jsonResponse(response, 401, { error: { type: 'unauthorized' } });
     return;
   }
   const pathname = new URL(request.url, 'http://router.invalid').pathname;
+  if (request.method === 'GET' && pathname === '/_pm/health') {
+    jsonResponse(response, 200, { status: 'ok', pid: process.pid });
+    return;
+  }
+  if (request.method === 'GET' && pathname === '/_pm/status') {
+    providerSnapshot().then((state) => jsonResponse(response, 200, state)).catch(() => {
+      jsonResponse(response, 500, { error: { type: 'router_error' } });
+    });
+    return;
+  }
+  if (request.method === 'POST' && pathname === '/_pm/mode') {
+    readControlBody(request, response, (body) => {
+      const validModes = new Set(['auto', ...config.providers.map((provider) => provider.id)]);
+      if (typeof body.mode !== 'string' || !validModes.has(body.mode)) {
+        jsonResponse(response, 400, { error: { type: 'invalid_provider_mode' } });
+        return;
+      }
+      queueStateMutation((state) => {
+        state.active = true;
+        state.mode = body.mode;
+        state.current_provider = body.mode === 'auto' ? null : body.mode;
+      }).then(() => jsonResponse(response, 200, { status: 'ok' })).catch(() => {
+        jsonResponse(response, 500, { error: { type: 'router_error' } });
+      });
+    });
+    return;
+  }
+  if (request.method === 'POST' && pathname === '/_pm/reset') {
+    readControlBody(request, response, (body) => {
+      const providerIds = new Set(config.providers.map((provider) => provider.id));
+      if (body.provider !== null && body.provider !== undefined
+        && (typeof body.provider !== 'string' || !providerIds.has(body.provider))) {
+        jsonResponse(response, 400, { error: { type: 'invalid_provider' } });
+        return;
+      }
+      queueStateMutation((state) => {
+        if (body.provider === null || body.provider === undefined) {
+          state.cooldowns = {};
+          state.current_provider = null;
+          state.last_transition = null;
+        } else {
+          delete state.cooldowns[body.provider];
+        }
+      }).then(() => jsonResponse(response, 200, { status: 'ok' })).catch(() => {
+        jsonResponse(response, 500, { error: { type: 'router_error' } });
+      });
+    });
+    return;
+  }
   if (request.method !== 'POST' || (pathname !== '/v1/messages' && pathname !== '/v1/messages/count_tokens')) {
     request.resume();
     jsonResponse(response, 404, { error: { type: 'not_found' } });

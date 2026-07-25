@@ -333,6 +333,201 @@ assert state["current_provider"] is None
 assert state["last_transition"] is None
 PY
 
+python3 - "$PM_PROVIDER_HOME/config.json" <<'PY'
+import json
+import os
+import socket
+import sys
+
+path = sys.argv[1]
+with socket.socket() as listener:
+    listener.bind(("127.0.0.1", 0))
+    port = listener.getsockname()[1]
+with open(path, encoding="utf-8") as stream:
+    config = json.load(stream)
+config["listen"]["port"] = port
+temporary = path + ".test-tmp"
+with open(temporary, "w", encoding="utf-8") as stream:
+    json.dump(config, stream, indent=2)
+    stream.write("\n")
+    stream.flush()
+    os.fsync(stream.fileno())
+os.chmod(temporary, 0o600)
+os.replace(temporary, path)
+PY
+
+python3 - "$PM_PROVIDER_HOME/state.json" <<'PY'
+import json
+import os
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as stream:
+    state = json.load(stream)
+state["cooldowns"] = {
+    "minimax": {"reason": "quota", "until": 4102444800},
+    "glm": {"reason": "server", "until": 4102444800},
+}
+temporary = path + ".test-tmp"
+with open(temporary, "w", encoding="utf-8") as stream:
+    json.dump(state, stream, indent=2)
+    stream.write("\n")
+    stream.flush()
+    os.fsync(stream.fileno())
+os.chmod(temporary, 0o600)
+os.replace(temporary, path)
+PY
+
+if ! run_provider ensure >"$SANDBOX/ensure-first.stdout" \
+  2>"$SANDBOX/ensure-first.stderr"; then
+  cat "$SANDBOX/ensure-first.stderr" >&2
+  [ ! -f "$PM_PROVIDER_HOME/router.log" ] ||
+    cat "$PM_PROVIDER_HOME/router.log" >&2
+  fail "provider ensure is unsupported"
+fi
+
+PID_FILE="$PM_PROVIDER_HOME/router.pid"
+LOG_FILE="$PM_PROVIDER_HOME/router.log"
+[ -f "$PID_FILE" ] || fail "ensure did not create a PID file"
+[ -f "$LOG_FILE" ] || fail "ensure did not create an operational log"
+assert_mode_600 "$PID_FILE"
+assert_mode_600 "$LOG_FILE"
+FIRST_PID=$(python3 - "$PID_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    value = json.load(stream)
+assert isinstance(value["pid"], int) and value["pid"] > 1
+assert isinstance(value["instance_id"], str) and value["instance_id"]
+print(value["pid"])
+PY
+)
+kill -0 "$FIRST_PID" 2>/dev/null || fail "ensure daemon is not alive"
+
+run_provider ensure >"$SANDBOX/ensure-second.stdout" \
+  2>"$SANDBOX/ensure-second.stderr"
+SECOND_PID=$(python3 - "$PID_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    print(json.load(stream)["pid"])
+PY
+)
+[ "$FIRST_PID" = "$SECOND_PID" ] || fail "ensure restarted a healthy daemon"
+
+run_provider status --json >"$SANDBOX/daemon-status.json" \
+  2>>"$COMMAND_STDERR"
+python3 - "$SANDBOX/daemon-status.json" "$FIRST_PID" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    status = json.load(stream)
+assert status["daemon"] == {"running": True, "pid": int(sys.argv[2])}
+assert status["mode"] == "auto"
+assert status["current_provider"] is None
+PY
+
+run_provider use glm >>"$COMMAND_STDOUT" 2>>"$COMMAND_STDERR"
+THIRD_PID=$(python3 - "$PID_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    print(json.load(stream)["pid"])
+PY
+)
+[ "$FIRST_PID" = "$THIRD_PID" ] || fail "use glm restarted the daemon"
+run_provider status --json >"$SANDBOX/glm-status.json" \
+  2>>"$COMMAND_STDERR"
+python3 - "$SANDBOX/glm-status.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    status = json.load(stream)
+assert status["mode"] == "glm"
+assert status["current_provider"] == "glm"
+PY
+
+run_provider reset minimax >>"$COMMAND_STDOUT" 2>>"$COMMAND_STDERR"
+run_provider status --json >"$SANDBOX/reset-status.json" \
+  2>>"$COMMAND_STDERR"
+python3 - "$SANDBOX/reset-status.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    status = json.load(stream)
+assert "minimax" not in status["cooldowns"]
+assert status["cooldowns"]["glm"]["reason"] == "server"
+PY
+
+run_provider exec python3 -c '
+import os
+from pathlib import Path
+assert os.environ["ANTHROPIC_BASE_URL"].startswith("http://127.0.0.1:")
+assert os.environ["ANTHROPIC_AUTH_TOKEN"] == Path(
+    os.environ["PM_PROVIDER_KEYCHAIN_DIR"], "router-local"
+).read_text()
+for name in (
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+):
+    assert os.environ[name] == "pm-auto"
+' >>"$COMMAND_STDOUT" 2>>"$COMMAND_STDERR"
+
+LOCAL_TOKEN=$(cat "$PM_PROVIDER_KEYCHAIN_DIR/router-local")
+[ -n "$LOCAL_TOKEN" ] || fail "ensure stored an empty router-local credential"
+assert_mode_600 "$PM_PROVIDER_KEYCHAIN_DIR/router-local"
+! grep -R -F "$LOCAL_TOKEN" "$PM_PROVIDER_HOME" >/dev/null 2>&1 ||
+  fail "router-local credential leaked under provider home"
+assert_no_secrets "$PM_PROVIDER_HOME"
+
+run_provider stop >"$SANDBOX/stop.stdout" 2>"$SANDBOX/stop.stderr"
+if kill -0 "$FIRST_PID" 2>/dev/null; then
+  fail "stop left the owned daemon alive"
+fi
+[ ! -e "$PID_FILE" ] || fail "stop left the PID file behind"
+run_provider status --json >"$SANDBOX/stopped-status.json" \
+  2>>"$COMMAND_STDERR"
+python3 - "$SANDBOX/stopped-status.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    status = json.load(stream)
+assert status["daemon"] == {"running": False, "pid": None}
+PY
+
+sleep 30 &
+UNRELATED_PID=$!
+python3 - "$PID_FILE" "$UNRELATED_PID" <<'PY'
+import json
+import os
+import sys
+
+path, pid = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as stream:
+    json.dump({"pid": int(pid), "instance_id": "not-the-router"}, stream)
+    stream.write("\n")
+os.chmod(path, 0o600)
+PY
+if run_provider ensure >"$SANDBOX/unrelated.stdout" \
+  2>"$SANDBOX/unrelated.stderr"; then
+  kill "$UNRELATED_PID" 2>/dev/null || true
+  fail "ensure accepted an unrelated live PID"
+fi
+grep -Fq 'refusing unrelated live process' "$SANDBOX/unrelated.stderr" ||
+  fail "unrelated live PID failure was not explicit"
+kill "$UNRELATED_PID" 2>/dev/null || true
+wait "$UNRELATED_PID" 2>/dev/null || true
+rm -f "$PID_FILE"
+
 run_provider remove minimax >>"$COMMAND_STDOUT" 2>>"$COMMAND_STDERR"
 run_provider remove minimax >>"$COMMAND_STDOUT" 2>>"$COMMAND_STDERR"
 run_provider status --json >"$STATUS_JSON" 2>>"$COMMAND_STDERR"
@@ -408,4 +603,4 @@ for stream in \
   assert_no_secrets "$stream"
 done
 
-echo "PASS: provider configuration and Keychain boundary"
+echo "PASS: provider control, Keychain, and daemon lifecycle"
