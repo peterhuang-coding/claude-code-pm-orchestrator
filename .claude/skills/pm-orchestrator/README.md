@@ -101,14 +101,17 @@ claude-yolo hub
 `claude-yolo` 会幂等检查 MiniMax Ultra 能力层。首次配置或迁移到新机器时也可以手动运行：
 
 ```bash
-$HOME/.claude/skills/pm-orchestrator/scripts/install-minimax-capabilities.sh ensure
-$HOME/.claude/skills/pm-orchestrator/scripts/install-minimax-capabilities.sh status
+claude-yolo capabilities install
+claude-yolo capabilities status
 ```
 
 能力层固定使用中国区 `MiniMax-M3`，并安装两部分：官方 `mmx-cli` Skill
 负责文本、图片、视频、语音、音乐、视觉理解和搜索调用；官方
 `minimax-skills` 插件提供按场景拆分的多模态、音乐、文档和开发工作流。
-MiniMax Key 只从 macOS Keychain 的 `claude-pm-provider-router/minimax` 读取。
+普通启动只做本地状态检查，不会静默联网安装。Provider router 从 macOS
+Keychain 的 `claude-pm-provider-router/minimax` 读取 Key；官方 `mmx-cli`
+为了非交互调用会按其机制把认证保存到权限为 `0600` 的
+`~/.mmx/config.json`。仓库不会保存任何 Key。
 
 `claude-yolo` 的源码位于闪迪盘，每次启动先同步全局 Skills 和 commands。无参数时，当前目录是已登记项目就进入项目，否则进入中央 Hub。脚本不会改模型、Provider、认证、effort、并发或子 Agent 路由；这些全部继承 Claude Code 当前配置。它启用 `bypassPermissions`，读取中央 Hub 的有界摘要，并开启新的交互会话而不是恢复旧聊天。
 

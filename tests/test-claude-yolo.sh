@@ -37,7 +37,7 @@ chmod +x "$BIN/claude"
 
 cat > "$BIN/minimax-capabilities" <<'EOF'
 #!/bin/sh
-printf '<%s>\n' "$*" >"${CLAUDE_YOLO_CAPABILITIES_OUT:?}"
+printf '<%s>\n' "$*" >>"${CLAUDE_YOLO_CAPABILITIES_OUT:?}"
 EOF
 chmod +x "$BIN/minimax-capabilities"
 export PM_MINIMAX_CAPABILITIES_TOOL="$BIN/minimax-capabilities"
@@ -53,8 +53,10 @@ export CLAUDE_YOLO_CAPABILITIES_OUT="$CAPABILITIES_OUT"
 )
 
 [ -x "$HOME_DIR/.claude/bin/claude-pm" ] || fail "Skills were not synchronized before launch"
-grep -Fxq '<ensure>' "$CAPABILITIES_OUT" ||
-  fail "MiniMax capabilities were not ensured before launch"
+grep -Fxq '<status>' "$CAPABILITIES_OUT" ||
+  fail "MiniMax capabilities were not checked before launch"
+! grep -Fxq '<install>' "$CAPABILITIES_OUT" ||
+  fail "normal launch triggered remote capability installation"
 grep -Fxq "PWD=$HUB" "$OUT" || fail "unknown directory did not fall back to Hub"
 grep -Fq 'ARGS=<--permission-mode><bypassPermissions><--name><unknown-start><' "$OUT" || fail "YOLO launch omitted bypass permissions"
 
@@ -94,5 +96,13 @@ PM_HUB_HOME="$HUB" \
 CLAUDE_YOLO_TEST_OUT="$OUT" \
 "$YOLO" respawn
 grep -Fq 'ARGS=<respawn><--all>' "$OUT" || fail "respawn arguments are incorrect"
+
+HOME="$HOME_DIR" \
+PATH="$BIN:$PATH" \
+PM_HUB_HOME="$HUB" \
+CLAUDE_YOLO_TEST_OUT="$OUT" \
+"$YOLO" capabilities install
+grep -Fxq '<install>' "$CAPABILITIES_OUT" ||
+  fail "capabilities install was not routed to the capability tool"
 
 echo "PASS: Claude YOLO entrypoint"

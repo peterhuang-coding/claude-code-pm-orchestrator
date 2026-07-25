@@ -22,8 +22,13 @@ CAPABILITIES_TOOL=${PM_MINIMAX_CAPABILITIES_TOOL:-"$SCRIPT_DIR/install-minimax-c
 }
 
 "$INSTALLER" >/dev/null
-if [ -x "$CAPABILITIES_TOOL" ] && ! "$CAPABILITIES_TOOL" ensure; then
+if [ "$#" -gt 0 ] && [ "$1" = capabilities ]; then
+  shift
+  exec "$CAPABILITIES_TOOL" "$@"
+fi
+if [ -x "$CAPABILITIES_TOOL" ] && ! "$CAPABILITIES_TOOL" status >/dev/null 2>&1; then
   echo "claude-yolo: MiniMax multimodal capabilities are not fully configured." >&2
+  echo "Run: claude-yolo capabilities install" >&2
 fi
 python3 "$CONFIGURATOR"
 

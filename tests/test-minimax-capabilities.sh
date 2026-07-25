@@ -32,16 +32,28 @@ cat >"$PM_TEST_BIN/mmx" <<'MMX'
 #!/bin/sh
 case "$1 ${2:-}" in
   "--version ") echo "mmx 1.0.18" ;;
-  "auth status")
-    [ -f "$HOME/.mmx-authenticated" ] || exit 1
-    echo '{"method":"api-key"}'
-    ;;
   "auth login")
-    touch "$HOME/.mmx-authenticated"
+    mkdir -p "$HOME/.mmx"
+    printf '%s\n' '{"api_key":"configured-key","region":"cn"}' >"$HOME/.mmx/config.json"
+    chmod 600 "$HOME/.mmx/config.json"
     printf 'mmx-login\n' >>"$PM_TEST_LOG"
     ;;
   "config set")
     printf 'mmx-config <%s>\n' "$*" >>"$PM_TEST_LOG"
+    python3 - "$HOME/.mmx/config.json" "$@" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+args = sys.argv[2:]
+key = args[args.index("--key") + 1].replace("-", "_")
+value = args[args.index("--value") + 1]
+with open(path, encoding="utf-8") as stream:
+    config = json.load(stream)
+config[key] = value
+with open(path, "w", encoding="utf-8") as stream:
+    json.dump(config, stream)
+PY
     ;;
   *) exit 2 ;;
 esac
@@ -65,18 +77,31 @@ cat >"$PM_TEST_BIN/claude" <<'EOF'
 #!/bin/sh
 case "$1 ${2:-} ${3:-}" in
   "plugin marketplace list")
-    [ ! -f "$HOME/.minimax-marketplace" ] || echo "minimax-skills"
+    if [ -f "$HOME/.minimax-marketplace" ]; then
+      echo '[{"name":"minimax-skills"}]'
+    else
+      echo '[]'
+    fi
     ;;
-  "plugin list ")
-    [ ! -f "$HOME/.minimax-plugin" ] || echo "minimax-skills@minimax-skills"
+  "plugin list --json")
+    if [ -f "$HOME/.minimax-plugin" ]; then
+      ENABLED=$(cat "$HOME/.minimax-plugin")
+      printf '[{"id":"minimax-skills@minimax-skills","enabled":%s}]\n' "$ENABLED"
+    else
+      echo '[]'
+    fi
     ;;
   "plugin marketplace add")
     touch "$HOME/.minimax-marketplace"
     printf 'claude-marketplace <%s>\n' "$*" >>"$PM_TEST_LOG"
     ;;
   "plugin install minimax-skills")
-    touch "$HOME/.minimax-plugin"
+    printf '%s\n' true >"$HOME/.minimax-plugin"
     printf 'claude-plugin <%s>\n' "$*" >>"$PM_TEST_LOG"
+    ;;
+  "plugin enable minimax-skills@minimax-skills")
+    printf '%s\n' true >"$HOME/.minimax-plugin"
+    printf 'claude-enable <%s>\n' "$*" >>"$PM_TEST_LOG"
     ;;
   *) exit 2 ;;
 esac
@@ -85,11 +110,11 @@ EOF
 chmod +x "$PM_TEST_BIN/"*
 
 OUT="$SANDBOX/ensure.out"
-PATH="$PM_TEST_BIN:/usr/bin:/bin" "$INSTALLER" ensure >"$OUT" 2>&1
+PATH="$PM_TEST_BIN:/usr/bin:/bin" "$INSTALLER" install >"$OUT" 2>&1
 
-grep -Fq 'npm <install -g mmx-cli>' "$PM_TEST_LOG" ||
+grep -Fq 'npm <install -g mmx-cli@1.0.18>' "$PM_TEST_LOG" ||
   fail "mmx-cli was not installed"
-grep -Fq 'npx <skills add MiniMax-AI/cli -y -g>' "$PM_TEST_LOG" ||
+grep -Fq 'npx <--yes skills@1.5.20 add MiniMax-AI/cli -y -g>' "$PM_TEST_LOG" ||
   fail "official mmx-cli Skill was not installed"
 grep -Fq 'claude-marketplace <plugin marketplace add https://github.com/MiniMax-AI/skills>' "$PM_TEST_LOG" ||
   fail "MiniMax Skill marketplace was not added"
@@ -106,12 +131,43 @@ grep -Fq 'default-text-model --value MiniMax-M3' "$PM_TEST_LOG" ||
   fail "MiniMax credential leaked to installer output"
 
 cp "$PM_TEST_LOG" "$SANDBOX/commands.before"
-PATH="$PM_TEST_BIN:/usr/bin:/bin" "$INSTALLER" ensure >"$OUT" 2>&1
+PATH="$PM_TEST_BIN:/usr/bin:/bin" "$INSTALLER" install >"$OUT" 2>&1
 cmp -s "$SANDBOX/commands.before" "$PM_TEST_LOG" ||
-  fail "second ensure was not idempotent"
+  fail "second install was not idempotent"
 
 PATH="$PM_TEST_BIN:/usr/bin:/bin" "$INSTALLER" status >"$OUT"
 grep -Fq 'model: MiniMax-M3' "$OUT" || fail "status omitted MiniMax-M3"
 grep -Fq 'ready: yes' "$OUT" || fail "status did not report ready"
+
+python3 - "$HOME/.mmx/config.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as stream:
+    config = json.load(stream)
+config["region"] = "global"
+config["default_text_model"] = "MiniMax-M2.7"
+with open(path, "w", encoding="utf-8") as stream:
+    json.dump(config, stream)
+PY
+: >"$PM_TEST_LOG"
+PATH="$PM_TEST_BIN:/usr/bin:/bin" "$INSTALLER" install >"$OUT" 2>&1
+grep -Fq 'region --value cn' "$PM_TEST_LOG" ||
+  fail "existing global mmx config was not migrated to cn"
+grep -Fq 'default-text-model --value MiniMax-M3' "$PM_TEST_LOG" ||
+  fail "existing mmx model was not migrated to MiniMax-M3"
+! grep -Fq 'npm <' "$PM_TEST_LOG" ||
+  fail "config migration unnecessarily reinstalled mmx-cli"
+
+printf '%s\n' false >"$HOME/.minimax-plugin"
+if PATH="$PM_TEST_BIN:/usr/bin:/bin" "$INSTALLER" status >"$OUT" 2>&1; then
+  fail "disabled MiniMax plugin was reported ready"
+fi
+grep -Fq 'minimax-skills plugin: no' "$OUT" ||
+  fail "status did not report disabled MiniMax plugin"
+PATH="$PM_TEST_BIN:/usr/bin:/bin" "$INSTALLER" install >"$OUT" 2>&1
+grep -Fxq true "$HOME/.minimax-plugin" ||
+  fail "disabled MiniMax plugin was not re-enabled"
 
 echo "PASS: MiniMax multimodal capabilities installer"

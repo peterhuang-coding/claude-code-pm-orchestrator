@@ -30,7 +30,7 @@ description: Use when product or engineering work needs PM-style decomposition, 
 
 ### 个人研发 Hub
 
-中央知识库默认位于 `/Volumes/SanDisk2TB/claude-pm-hub`。Skill 和脚本是可更新的程序，Hub 是不可被安装器覆盖的个人运行数据；密钥只放在 Claude Code settings、环境变量或系统 Keychain。
+中央知识库默认位于 `/Volumes/SanDisk2TB/claude-pm-hub`。Skill 和脚本是可更新的程序，Hub 是不可被安装器覆盖的个人运行数据；密钥只放在 Claude Code settings、环境变量、系统 Keychain，或官方工具自己的权限受限认证文件中，绝不写入项目或 Skill 仓库。
 
 - `claude-pm [项目路径]`：模型中立的统一冷启动入口。
 - `/wrap-up`：把事实、验证、风险、Idea 和唯一下一步写回当前项目。
@@ -54,7 +54,7 @@ Agent Team 最多 5 名成员（含 lead），按 Product、Tech、Dev、Test、
 
 ### MiniMax Ultra 能力层
 
-启动器会调用 `install-minimax-capabilities.sh ensure` 做幂等检查。配置完成后：
+启动器只调用 `install-minimax-capabilities.sh status` 做无网络检查；安装或修复必须由用户显式运行 `claude-yolo capabilities install`。配置完成后：
 
 - 主编码模型由 provider router 优先选择中国区 `MiniMax-M3`。
 - `mmx-cli` Skill 提供文本、图片、视频、语音、音乐、视觉理解和搜索。

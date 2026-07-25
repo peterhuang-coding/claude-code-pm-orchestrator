@@ -15,15 +15,19 @@ This installs only the PM orchestrator commands, agents, templates, and skill in
 Install or repair the MiniMax Ultra capability layer:
 
 ```bash
-$HOME/.claude/skills/pm-orchestrator/scripts/install-minimax-capabilities.sh ensure
-$HOME/.claude/skills/pm-orchestrator/scripts/install-minimax-capabilities.sh status
+claude-yolo capabilities install
+claude-yolo capabilities status
 ```
 
 The installer selects the China endpoint and `MiniMax-M3`, installs the official
 `mmx-cli` Skill for text, image, video, speech, music, vision, and search, and
-enables the official `minimax-skills` Claude Code plugin. It reads the MiniMax
-credential from macOS Keychain service `claude-pm-provider-router`, account
-`minimax`; credentials are never stored in this repository.
+enables the official `minimax-skills` Claude Code plugin. Normal
+`claude-yolo` startup performs only a local status check and never installs
+remote packages implicitly. Provider routing reads the MiniMax credential from
+macOS Keychain service `claude-pm-provider-router`, account `minimax`.
+The official `mmx-cli` requires its own non-interactive authentication and saves
+that credential in `~/.mmx/config.json` with mode `0600`; credentials are never
+stored in this repository.
 
 ## Start Claude Code
 
