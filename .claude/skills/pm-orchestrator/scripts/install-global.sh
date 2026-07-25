@@ -35,7 +35,7 @@ chmod +x "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/claude-pm"
 chmod +x "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/claude-yolo"
 mkdir -p "$TARGET_CLAUDE/bin"
 ln -sf "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/claude-pm" "$TARGET_CLAUDE/bin/claude-pm"
-ln -sf "$SOURCE_CLAUDE/skills/pm-orchestrator/scripts/claude-yolo" "$TARGET_CLAUDE/bin/claude-yolo"
+ln -sf "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/claude-yolo" "$TARGET_CLAUDE/bin/claude-yolo"
 
 printf 'Installed PM orchestrator into %s\n' "$TARGET_CLAUDE"
 printf 'Existing settings.json and credentials were not modified.\n'
