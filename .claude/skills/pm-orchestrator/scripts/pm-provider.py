@@ -77,6 +77,31 @@ def atomic_write_json(path: Path, value: object) -> None:
     atomic_write(path, content)
 
 
+def migrate_provider_config(config_path: Path) -> None:
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        template = json.loads(template_path().read_text(encoding="utf-8"))
+        providers = config.get("providers", [])
+        template_providers = template.get("providers", [])
+        desired = next(
+            item for item in template_providers if item.get("id") == "minimax"
+        )
+        current = next(item for item in providers if item.get("id") == "minimax")
+    except (OSError, json.JSONDecodeError, AttributeError, StopIteration, TypeError):
+        fail("could not migrate config")
+
+    changed = False
+    for field in ("base_url", "model", "auth_scheme"):
+        if current.get(field) != desired.get(field):
+            current[field] = desired[field]
+            changed = True
+    if changed:
+        try:
+            atomic_write_json(config_path, config)
+        except OSError:
+            fail("could not migrate config")
+
+
 def initialize_home() -> tuple[Path, Path]:
     root = provider_home()
     config = root / "config.json"
@@ -84,6 +109,8 @@ def initialize_home() -> tuple[Path, Path]:
     try:
         if not config.exists():
             atomic_write(config, template_path().read_bytes())
+        else:
+            migrate_provider_config(config)
     except OSError:
         fail("could not initialize config")
     try:

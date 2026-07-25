@@ -203,6 +203,34 @@ assert config["cooldown_seconds"] == {
 }
 PY
 
+mkdir -p "$PM_PROVIDER_HOME"
+python3 - "$CONFIG_TEMPLATE" "$PM_PROVIDER_HOME/config.json" <<'PY'
+import json
+import os
+import sys
+
+source, target = sys.argv[1:]
+with open(source, encoding="utf-8") as stream:
+    config = json.load(stream)
+config["providers"][0]["base_url"] = "https://api.minimax.io/anthropic"
+config["providers"][0]["model"] = "MiniMax-M2.7"
+with open(target, "w", encoding="utf-8") as stream:
+    json.dump(config, stream, indent=2)
+    stream.write("\n")
+os.chmod(target, 0o600)
+PY
+run_provider status --json >"$SANDBOX/migration-status.json" 2>>"$COMMAND_STDERR"
+python3 - "$PM_PROVIDER_HOME/config.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    config = json.load(stream)
+minimax = next(item for item in config["providers"] if item["id"] == "minimax")
+assert minimax["base_url"] == "https://api.minimaxi.com/anthropic"
+assert minimax["model"] == "MiniMax-M3"
+PY
+
 printf '%s\n' "$SECRET_MINIMAX" |
   run_provider set minimax >"$SANDBOX/set-minimax.out" 2>>"$COMMAND_STDERR"
 printf '%s\n' "$SECRET_GLM" |
