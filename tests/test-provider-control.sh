@@ -291,6 +291,77 @@ assert_no_secrets "$SANDBOX/set-deepseek.out"
 assert_no_secrets "$STATUS_JSON"
 assert_no_secrets "$SANDBOX/status.txt"
 
+SETTINGS="$SANDBOX/settings.json"
+cat >"$SETTINGS" <<EOF
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "$SECRET_DEEPSEEK",
+    "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+    "ANTHROPIC_MODEL": "deepseek-v4-pro",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4-pro",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-pro",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-pro",
+    "CLAUDE_MODEL": "deepseek-v4-pro",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-v4-pro",
+    "OPENROUTER_API_KEY": "keep-openrouter",
+    "OPENROUTER_VISION_MODEL": "keep-vision",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY": "12"
+  },
+  "permissions": {"defaultMode": "bypassPermissions"},
+  "teammateMode": "in-process",
+  "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "keep-hook"}]}]}
+}
+EOF
+chmod 600 "$SETTINGS"
+rm -f "$PM_PROVIDER_KEYCHAIN_DIR/deepseek"
+PM_CLAUDE_SETTINGS="$SETTINGS" run_provider setup --non-interactive \
+  >"$SANDBOX/setup.stdout" 2>"$SANDBOX/setup.stderr"
+python3 - "$SETTINGS" "$PM_PROVIDER_KEYCHAIN_DIR/deepseek" "$PM_PROVIDER_HOME/state.json" "$SECRET_DEEPSEEK" <<'PY'
+import json
+import sys
+
+settings_path, key_path, state_path, secret = sys.argv[1:]
+with open(settings_path, encoding="utf-8") as stream:
+    settings = json.load(stream)
+env = settings["env"]
+for key in (
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "CLAUDE_MODEL",
+    "CLAUDE_CODE_SUBAGENT_MODEL",
+):
+    assert key not in env
+assert env["OPENROUTER_API_KEY"] == "keep-openrouter"
+assert env["OPENROUTER_VISION_MODEL"] == "keep-vision"
+assert env["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"] == "1"
+assert env["CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY"] == "12"
+assert settings["permissions"] == {"defaultMode": "bypassPermissions"}
+assert settings["teammateMode"] == "in-process"
+assert settings["hooks"]["SessionStart"][0]["hooks"][0]["command"] == "keep-hook"
+with open(key_path, encoding="utf-8") as stream:
+    assert stream.read() == secret
+with open(state_path, encoding="utf-8") as stream:
+    state = json.load(stream)
+assert state["active"] is True
+assert state["mode"] == "auto"
+PY
+assert_mode_600 "$SETTINGS"
+cp "$SETTINGS" "$SANDBOX/settings.after-first"
+PM_CLAUDE_SETTINGS="$SETTINGS" run_provider setup --non-interactive \
+  >"$SANDBOX/setup-second.stdout" 2>"$SANDBOX/setup-second.stderr"
+cmp -s "$SANDBOX/settings.after-first" "$SETTINGS" ||
+  fail "provider setup was not idempotent"
+assert_no_secrets "$SANDBOX/setup.stdout"
+assert_no_secrets "$SANDBOX/setup.stderr"
+assert_no_secrets "$SANDBOX/setup-second.stdout"
+assert_no_secrets "$SANDBOX/setup-second.stderr"
+
 ! run_provider status extra >>"$COMMAND_STDOUT" 2>>"$COMMAND_STDERR" ||
   fail "status accepted an extra argument"
 ! run_provider set unknown </dev/null >>"$COMMAND_STDOUT" 2>>"$COMMAND_STDERR" ||

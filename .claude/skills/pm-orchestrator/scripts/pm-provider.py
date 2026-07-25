@@ -33,6 +33,20 @@ DEFAULT_STATE = {
 KEYCHAIN_ITEM_NOT_FOUND = 44
 CONTROL_BODY_LIMIT = 8 * 1024
 LOG_LIMIT = 64 * 1024
+CODING_PROVIDER_FIELDS = {
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_CUSTOM_MODEL_OPTION",
+    "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME",
+    "ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION",
+    "CLAUDE_MODEL",
+    "CLAUDE_CODE_SUBAGENT_MODEL",
+}
 
 
 def fail(message: str) -> NoReturn:
@@ -546,6 +560,75 @@ def remove_command(provider: str) -> int:
     return 0
 
 
+def settings_path() -> Path:
+    return Path(
+        os.environ.get("PM_CLAUDE_SETTINGS", "~/.claude/settings.json")
+    ).expanduser()
+
+
+def legacy_provider(env: dict[str, Any]) -> str | None:
+    fingerprint = " ".join(
+        str(env.get(name, ""))
+        for name in ("ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL", "CLAUDE_MODEL")
+    ).lower()
+    if "deepseek" in fingerprint:
+        return "deepseek"
+    if "sfkey" in fingerprint or "glm" in fingerprint:
+        return "glm"
+    if "minimax" in fingerprint:
+        return "minimax"
+    return None
+
+
+def setup_command(state_path: Path) -> int:
+    path = settings_path()
+    try:
+        settings = (
+            json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        )
+    except (OSError, json.JSONDecodeError):
+        fail("could not read Claude settings")
+    if not isinstance(settings, dict):
+        fail("Claude settings must be a JSON object")
+    env = settings.get("env", {})
+    if not isinstance(env, dict):
+        fail("Claude settings env must be a JSON object")
+
+    legacy_token = env.get("ANTHROPIC_AUTH_TOKEN") or env.get("ANTHROPIC_API_KEY")
+    provider = legacy_provider(env)
+    if legacy_token and provider and not credential_is_configured(provider):
+        if not isinstance(legacy_token, str):
+            fail("legacy provider credential is invalid")
+        store_credential(provider, legacy_token)
+        if read_credential(provider) != legacy_token:
+            fail(f"could not verify migrated credential for {provider}")
+
+    if not credential_is_configured("minimax"):
+        fail("MiniMax credential is required before provider setup")
+
+    updated = dict(settings)
+    updated_env = dict(env)
+    for field in CODING_PROVIDER_FIELDS:
+        updated_env.pop(field, None)
+    updated["env"] = updated_env
+    if updated != settings:
+        try:
+            atomic_write_json(path, updated)
+        except OSError:
+            fail("could not update Claude settings")
+
+    state = read_state(state_path)
+    state["active"] = True
+    state["mode"] = "auto"
+    state["current_provider"] = None
+    write_state(state_path, state)
+    configured = [
+        provider for provider in VALID_PROVIDERS if credential_is_configured(provider)
+    ]
+    print(f"Provider routing activated: {', '.join(configured)}.")
+    return 0
+
+
 def status_command(config_path: Path, state_path: Path, as_json: bool) -> int:
     daemon = active_daemon(config_path)
     state = (
@@ -648,6 +731,9 @@ def parse_args() -> argparse.Namespace:
     reset_parser = commands.add_parser("reset")
     reset_parser.add_argument("provider", nargs="?", choices=VALID_PROVIDERS)
 
+    setup_parser = commands.add_parser("setup")
+    setup_parser.add_argument("--non-interactive", action="store_true")
+
     commands.add_parser("ensure")
     commands.add_parser("stop")
 
@@ -670,6 +756,8 @@ def main() -> int:
         return use_command(config_path, state_path, args.mode)
     if args.command == "reset":
         return reset_command(config_path, state_path, args.provider)
+    if args.command == "setup":
+        return setup_command(state_path)
     if args.command == "ensure":
         ensure_command(config_path)
         return 0
