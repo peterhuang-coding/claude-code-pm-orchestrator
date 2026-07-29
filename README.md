@@ -18,6 +18,7 @@ This installs only the PM orchestrator commands, agents, templates, and skill in
 claude-yolo
 claude-yolo /path/to/any-project
 claude-yolo hub
+claude-yolo boss
 claude-yolo board
 claude-yolo respawn
 ```
@@ -31,6 +32,52 @@ For a quick task, run `/do <request>`. For work that spans a session or needs pr
 Agent Teams are enabled but created only inside complex Features. They inherit the lead session's model and permissions, use at most five members, and require separate git worktrees for parallel edits. The package never hardcodes an API provider or model.
 
 Lower-level `/goal`, `/leader-task`, and `/leader-resume` commands remain available for specialist control and recovery.
+
+## Feishu Away Mode
+
+The Feishu gateway uses one boss Claude conversation rooted at
+`/Volumes/SanDisk2TB`. Project sessions, teammates, and subagents do not send
+messages to Feishu directly.
+
+Configure one Feishu custom-bot webhook in macOS Keychain:
+
+```bash
+claude-feishu configure
+```
+
+Then use two terminals:
+
+```bash
+# Terminal 1: the only Feishu-facing boss conversation
+cd /Volumes/SanDisk2TB
+claude-yolo boss
+```
+
+```bash
+# Terminal 2: visible gateway console
+claude-feishu
+```
+
+Starting `claude-feishu` turns synchronization on and immediately sends a
+Gateway-online message to Feishu. The console accepts:
+
+```text
+cloud on
+cloud off
+cloud status
+cloud test
+cloud logs
+cloud quit
+```
+
+The same controls are available as `claude-feishu on`, `off`, `status`, `test`,
+and `logs`. In the boss conversation, `我现在外出了` turns synchronization on;
+`我回来了`, `我没外出`, or `没外出` turns it off. The current release is outbound
+only: completed boss replies, failures, and attention notifications are copied
+to Feishu. Replies sent from Feishu are not yet routed back into Claude Code.
+Only one gateway console can run at a time. Pending messages expire after 24
+hours; webhook delivery is at-least-once, so an ambiguous network timeout can
+produce a duplicate rather than silently losing a Claude reply.
 
 For image understanding, use `/imageinput /path/to/image.png Analyze this page`. Set `OPENROUTER_API_KEY` locally; the current coding model remains unchanged and only the image helper uses OpenRouter.
 

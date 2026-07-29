@@ -27,6 +27,7 @@ cat > "$BIN/claude" <<'EOF'
 set -eu
 {
   printf 'PWD=%s\n' "$PWD"
+  printf 'PM_FEISHU_BOSS=%s\n' "${PM_FEISHU_BOSS-<unset>}"
   printf 'ARGS='
   printf '<%s>' "$@"
   printf '\n'
@@ -39,13 +40,17 @@ chmod +x "$BIN/claude"
   HOME="$HOME_DIR" \
   PATH="$BIN:$PATH" \
   PM_HUB_HOME="$HUB" \
+  PM_FEISHU_BOSS=1 \
   CLAUDE_YOLO_TEST_OUT="$OUT" \
   "$YOLO" --name unknown-start
 )
 
 [ -x "$HOME_DIR/.claude/bin/claude-pm" ] || fail "Skills were not synchronized before launch"
 grep -Fxq "PWD=$HUB" "$OUT" || fail "unknown directory did not fall back to Hub"
-grep -Fq 'ARGS=<--permission-mode><bypassPermissions><--name><unknown-start><' "$OUT" || fail "YOLO launch omitted bypass permissions"
+grep -Fq '<--permission-mode><bypassPermissions>' "$OUT" || fail "YOLO launch omitted bypass permissions"
+grep -Fq '<--effort><max>' "$OUT" || fail "YOLO launch omitted max effort"
+grep -Fq '<--teammate-mode><in-process>' "$OUT" || fail "YOLO launch omitted Agent Team mode"
+grep -Fxq 'PM_FEISHU_BOSS=<unset>' "$OUT" || fail "ordinary launch inherited boss authority"
 
 HOME="$HOME_DIR" PM_HUB_HOME="$HUB" \
   "$HOME_DIR/.claude/skills/pm-orchestrator/scripts/pm-hub.sh" register "$PROJECT" sample >/dev/null
@@ -83,5 +88,15 @@ PM_HUB_HOME="$HUB" \
 CLAUDE_YOLO_TEST_OUT="$OUT" \
 "$YOLO" respawn
 grep -Fq 'ARGS=<respawn><--all>' "$OUT" || fail "respawn arguments are incorrect"
+
+HOME="$HOME_DIR" \
+PATH="$BIN:$PATH" \
+PM_HUB_HOME="$HUB" \
+PM_BOSS_ROOT="$SANDBOX" \
+CLAUDE_YOLO_TEST_OUT="$OUT" \
+"$YOLO" boss --name boss-start
+grep -Fxq "PWD=$SANDBOX" "$OUT" || fail "boss mode did not use the configured disk root"
+grep -Fxq 'PM_FEISHU_BOSS=1' "$OUT" || fail "boss mode did not mark the Feishu-facing session"
+grep -Fq '<--name><boss-start>' "$OUT" || fail "boss mode lost Claude arguments"
 
 echo "PASS: Claude YOLO entrypoint"

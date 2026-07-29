@@ -70,6 +70,29 @@ cp "$SETTINGS" "$SANDBOX/settings.once"
 PM_CLAUDE_SETTINGS="$SETTINGS" python3 "$CONFIGURE"
 cmp -s "$SETTINGS" "$SANDBOX/settings.once" || fail "configurator is not idempotent"
 
+python3 - "$SETTINGS" <<'PY' || fail "Feishu managed hooks are incomplete"
+import json
+import sys
+
+settings = json.load(open(sys.argv[1], encoding="utf-8"))
+hooks = settings.get("hooks", {})
+for event in ("SessionStart", "UserPromptSubmit", "Stop", "StopFailure", "Notification"):
+    managed = [
+        hook
+        for group in hooks.get(event, [])
+        for hook in group.get("hooks", [])
+        if "pm-feishu-hook.py" in hook.get("command", "")
+    ]
+    if len(managed) != 1:
+        raise SystemExit(f"{event}: expected one Feishu hook, got {managed}")
+    hook = managed[0]
+    if event in ("SessionStart", "UserPromptSubmit"):
+        if hook.get("async") is True or hook.get("timeout", 99) > 2:
+            raise SystemExit(f"{event}: state-changing hook is not bounded and ordered")
+    elif hook.get("async") is not True or hook.get("timeout", 99) > 5:
+        raise SystemExit(f"{event}: notification hook is not bounded and async")
+PY
+
 printf '{}\n' > "$DEFAULT_SETTINGS"
 PM_CLAUDE_SETTINGS="$DEFAULT_SETTINGS" python3 "$CONFIGURE" &
 PID_CONFIG_1=$!
@@ -93,8 +116,9 @@ assert settings["permissions"]["allow"] == ["Bash(git status)"]
 assert settings["teammateMode"] == "in-process"
 hooks = settings["hooks"]["SessionStart"]
 commands = [h["command"] for group in hooks for h in group["hooks"]]
-assert len(commands) == 1
-assert str(Path(sys.argv[2]).resolve()) in commands[0]
+assert len(commands) == 2
+assert any(str(Path(sys.argv[2]).resolve()) in command for command in commands)
+assert any("pm-feishu-hook.py" in command for command in commands)
 defaults = json.loads(Path(sys.argv[3]).read_text())
 assert defaults["env"]["CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY"] == "12"
 PY

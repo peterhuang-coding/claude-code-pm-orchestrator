@@ -10,16 +10,29 @@ import fcntl
 import tempfile
 import copy
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 
-def command_hook(script: Path) -> dict[str, Any]:
+def command_hook(
+    script: Path, *, async_hook: bool = False, timeout: Optional[int] = None
+) -> dict[str, Any]:
     command = f"python3 {shlex.quote(str(script.resolve()))}"
-    return {"hooks": [{"type": "command", "command": command}]}
+    hook: dict[str, Any] = {"type": "command", "command": command}
+    if async_hook:
+        hook["async"] = True
+    if timeout is not None:
+        hook["timeout"] = timeout
+    return {"hooks": [hook]}
 
 
 def replace_managed_hook(
-    hooks: dict[str, Any], event: str, script_name: str, script: Path
+    hooks: dict[str, Any],
+    event: str,
+    script_name: str,
+    script: Path,
+    *,
+    async_hook: bool = False,
+    timeout: Optional[int] = None,
 ) -> None:
     groups = hooks.get(event, [])
     retained = []
@@ -32,7 +45,9 @@ def replace_managed_hook(
         ):
             continue
         retained.append(group)
-    retained.append(command_hook(script))
+    retained.append(
+        command_hook(script, async_hook=async_hook, timeout=timeout)
+    )
     hooks[event] = retained
 
 
@@ -65,6 +80,21 @@ def main() -> int:
         replace_managed_hook(
             hooks, "SessionStart", "pm-session-start.py", scripts / "pm-session-start.py"
         )
+        for event in (
+            "SessionStart",
+            "UserPromptSubmit",
+            "Stop",
+            "StopFailure",
+            "Notification",
+        ):
+            replace_managed_hook(
+                hooks,
+                event,
+                "pm-feishu-hook.py",
+                scripts / "pm-feishu-hook.py",
+                async_hook=event not in ("SessionStart", "UserPromptSubmit"),
+                timeout=2 if event in ("SessionStart", "UserPromptSubmit") else 5,
+            )
         for event in ("TeammateIdle", "TaskCompleted"):
             replace_managed_hook(
                 hooks, event, "pm-team-event.py", scripts / "pm-team-event.py"

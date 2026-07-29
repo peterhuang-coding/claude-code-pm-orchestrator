@@ -15,6 +15,8 @@ INSTALLER="$SCRIPT_DIR/install-global.sh"
 HUB_TOOL="$SCRIPT_DIR/pm-hub.sh"
 CONFIGURATOR="$SCRIPT_DIR/configure-claude-user.py"
 
+unset PM_FEISHU_BOSS
+
 [ -x "$INSTALLER" ] || {
   echo "claude-yolo: PM Orchestrator source is unavailable: $INSTALLER" >&2
   exit 1
@@ -40,7 +42,15 @@ GLOBAL_ENTRY="$HOME/.claude/bin/claude-pm"
 HUB=$("$HUB_TOOL" init)
 TARGET=
 
-if [ "$#" -gt 0 ] && [ "$1" = hub ]; then
+if [ "$#" -gt 0 ] && [ "$1" = boss ]; then
+  shift
+  TARGET=${PM_BOSS_ROOT:-/Volumes/SanDisk2TB}
+  [ -d "$TARGET" ] || {
+    echo "claude-yolo: boss root is unavailable: $TARGET" >&2
+    exit 1
+  }
+  export PM_FEISHU_BOSS=1
+elif [ "$#" -gt 0 ] && [ "$1" = hub ]; then
   TARGET=$HUB
   shift
 elif [ "$#" -gt 0 ] && [ -d "$1" ]; then

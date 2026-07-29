@@ -57,7 +57,9 @@ The boss conversation also recognizes explicit phrases:
 - `我没外出` disables Feishu synchronization.
 
 The state is global and persistent. Commands in either terminal update the same
-state.
+state. Starting the interactive `claude-feishu` console explicitly enables
+synchronization and sends an immediate Gateway-online message, so restarting
+the second terminal restores visible delivery without another command.
 
 ## Architecture
 
@@ -80,6 +82,11 @@ Boss Claude Code session at /Volumes/SanDisk2TB
 The gateway is a local process with a visible interactive console. Hook scripts
 remain short-lived clients: they validate each event, append it to the durable
 queue, notify the gateway, and exit without blocking Claude Code.
+
+Only one interactive gateway process may hold the delivery lock. Delivery is
+at-least-once because Feishu custom-bot webhooks do not expose a remote
+idempotency key: an ambiguous timeout after remote acceptance may produce a
+duplicate, which is preferred to silently losing a boss reply.
 
 ## Boss Session Binding
 
@@ -105,15 +112,13 @@ The boss Claude session is rooted at the raw disk root, but cold start must not
 scan the entire disk. Project awareness comes from an explicit registry stored
 under the existing PM Hub.
 
-For each message, the gateway derives a display context in this order:
-
-1. Active feature or goal recorded by the PM orchestrator.
-2. Explicit project path referenced by the current task.
-3. Registered project matching the event working directory.
-4. Fallback label `Portfolio / Boss`.
-
-Feishu messages show human-readable project and task names. Session IDs are
-included only as shortened diagnostic metadata.
+Project attribution reads only the explicit PM Hub project registry. It matches
+the event working directory or project names mentioned in the boss response;
+when several or no projects match, the message is labeled as a Portfolio/Boss
+summary. The first meaningful response line is used as the human-readable task
+summary. Session IDs are included only as shortened diagnostic metadata. Active
+feature and goal metadata are deferred until the boss session exposes an
+explicit current-task identifier to hooks.
 
 ## Message Format
 
@@ -121,7 +126,7 @@ Each delivered message contains:
 
 ```text
 [Project Name | Claude replied]
-Task: current feature or goal
+Summary: first meaningful response line
 Session: short boss session ID
 Time: local timestamp
 
@@ -138,6 +143,8 @@ normal completion, errors, and blocked decisions are visually distinguishable.
 
 Away mode is stored independently from the gateway process:
 
+- Starting bare `claude-feishu` persists `enabled=true` and sends an online
+  confirmation.
 - `cloud on` persists `enabled=true`.
 - `cloud off` persists `enabled=false`.
 - Restarting the gateway or Claude Code preserves the last setting.
@@ -145,6 +152,7 @@ Away mode is stored independently from the gateway process:
 - Turning synchronization off prevents new deliveries but does not delete logs.
 - Turning synchronization back on sends only events created while enabled,
   subject to a configurable backlog age limit.
+- Pending events older than 24 hours are expired instead of being delivered.
 
 Natural-language switching is implemented by a narrow `UserPromptSubmit` hook
 that matches only the approved phrases. It does not use a model and does not
@@ -187,7 +195,8 @@ Feishu and routing replies back into the active Claude session.
 
 - Hook execution must never block or fail the Claude turn.
 - Queue writes use atomic replacement or append-plus-lock semantics.
-- Delivery uses stable event IDs for deduplication.
+- Delivery uses stable event IDs for local deduplication and a single-process
+  delivery lock.
 - Retries use exponential backoff with a bounded maximum.
 - Gateway logs redact webhook URLs, secrets, and message credentials.
 - Only the registered boss session can send outbound messages.
@@ -201,7 +210,8 @@ The implementation must verify:
 
 1. `claude-feishu on`, `off`, `status`, and `test` work.
 2. Interactive `cloud` commands update the same persistent state.
-3. A top-level boss `Stop` event is sent exactly once while away mode is on.
+3. A repeated local boss `Stop` hook event is enqueued once while away mode is
+   on; an ambiguous remote timeout may produce a duplicate delivery.
 4. The same event is not sent while away mode is off.
 5. Non-boss and subagent events are ignored.
 6. Project and task labels are derived without scanning the disk root.

@@ -35,6 +35,11 @@ cmp -s "$SANDBOX/settings.before" "$TARGET/settings.json" || fail "installer cha
 [ -x "$TARGET/bin/claude-yolo" ] || fail "short Claude YOLO entrypoint was not installed"
 SOURCE_YOLO=$(CDPATH= cd -- "$SCRIPT_DIR/../.claude/skills/pm-orchestrator/scripts" && pwd -P)/claude-yolo
 [ "$(readlink "$TARGET/bin/claude-yolo")" = "$SOURCE_YOLO" ] || fail "Claude YOLO entrypoint does not point to source package"
+[ -x "$TARGET/bin/claude-feishu" ] || fail "Claude Feishu entrypoint was not installed"
+SOURCE_FEISHU=$(CDPATH= cd -- "$SCRIPT_DIR/../.claude/skills/pm-orchestrator/scripts" && pwd -P)/claude-feishu
+[ "$(readlink "$TARGET/bin/claude-feishu")" = "$SOURCE_FEISHU" ] || fail "Claude Feishu entrypoint does not point to source package"
+[ -x "$TARGET/skills/pm-orchestrator/scripts/pm-feishu-hook.py" ] || fail "Feishu hook was not installed"
+[ -f "$TARGET/skills/pm-orchestrator/scripts/pm_feishu.py" ] || fail "Feishu core was not installed"
 [ -x "$TARGET/skills/pm-orchestrator/scripts/pm-hub.sh" ] || fail "Hub tool was not installed"
 [ ! -e "$TARGET/skills/pm-orchestrator/scripts/launch-claude-glm.sh" ] || fail "legacy GLM launcher was not removed"
 [ ! -e "$TARGET/skills/pm-orchestrator/scripts/launch-claude-deepseek.sh" ] || fail "legacy DeepSeek launcher was not removed"

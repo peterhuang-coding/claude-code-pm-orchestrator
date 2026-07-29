@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+"""Visible control console for Claude-to-Feishu synchronization."""
+
+from __future__ import annotations
+
+import json
+import os
+import select
+import subprocess
+import sys
+import threading
+from pathlib import Path
+
+from pm_feishu import (
+    KEYCHAIN_ACCOUNT,
+    KEYCHAIN_SERVICE,
+    acquire_gateway_lock,
+    append_log,
+    deliver_pending,
+    is_configured,
+    load_boss,
+    load_state,
+    pending_events,
+    runtime_dir,
+    send_text,
+    set_enabled,
+)
+
+
+def status_text() -> str:
+    state = load_state()
+    boss = load_boss()
+    mode = "ON" if state.get("enabled") else "OFF"
+    session = str(boss.get("session_id") or "not-bound")[:12]
+    connection = "configured" if is_configured() else "not-configured"
+    return (
+        f"{mode} | Feishu {connection} | "
+        f"boss {session} | pending {len(pending_events())}"
+    )
+
+
+def configure() -> int:
+    print("Paste the Feishu custom-bot webhook when macOS Keychain prompts.")
+    result = subprocess.run(
+        [
+            "security",
+            "add-generic-password",
+            "-U",
+            "-s",
+            KEYCHAIN_SERVICE,
+            "-a",
+            KEYCHAIN_ACCOUNT,
+            "-w",
+        ],
+        check=False,
+    )
+    if result.returncode != 0:
+        print("Keychain configuration failed.", file=sys.stderr)
+        return result.returncode
+    print("Feishu webhook saved in macOS Keychain.")
+    return 0
+
+
+def show_logs(limit: int = 20) -> None:
+    path = runtime_dir() / "logs" / "gateway.jsonl"
+    if not path.exists():
+        print("No gateway logs.")
+        return
+    lines = path.read_text(encoding="utf-8").splitlines()[-limit:]
+    for line in lines:
+        try:
+            event = json.loads(line)
+            print(
+                f"{event.get('at', '')} | {event.get('kind', '')} | "
+                f"{event.get('message', '')}"
+            )
+        except json.JSONDecodeError:
+            continue
+
+
+def test_message() -> bool:
+    try:
+        send_text("Claude Feishu Gateway 测试成功。")
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        return False
+    print("Test message delivered.")
+    return True
+
+
+def execute_command(command: str) -> bool:
+    normalized = " ".join(command.strip().lower().split())
+    if normalized.startswith("cloud "):
+        normalized = normalized[6:]
+    if normalized == "on":
+        set_enabled(True)
+        print("Feishu sync ON.")
+    elif normalized == "off":
+        set_enabled(False)
+        print("Feishu sync OFF.")
+    elif normalized == "status":
+        print(status_text())
+    elif normalized == "test":
+        test_message()
+    elif normalized == "logs":
+        show_logs()
+    elif normalized in {"quit", "exit"}:
+        print("Gateway stopped.")
+        return False
+    elif normalized:
+        print("Commands: cloud on|off|status|test|logs|quit")
+    return True
+
+
+def console() -> int:
+    try:
+        gateway_lock = acquire_gateway_lock()
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    set_enabled(True)
+    print("Claude Feishu Gateway")
+    print(status_text())
+    try:
+        send_text(
+            "Claude Feishu Gateway 已上线，外出同步已开启。",
+            retries=1,
+            timeout=5,
+        )
+        append_log("online", "Gateway online")
+        print("Gateway 已上线，飞书同步 ON。")
+    except RuntimeError as error:
+        append_log("connection-error", str(error))
+        print(str(error), file=sys.stderr)
+
+    stop_delivery = threading.Event()
+
+    def delivery_worker() -> None:
+        while not stop_delivery.is_set():
+            try:
+                deliver_pending()
+            except Exception as error:
+                try:
+                    append_log("worker-error", type(error).__name__)
+                except OSError:
+                    pass
+            stop_delivery.wait(0.5)
+
+    worker = threading.Thread(
+        target=delivery_worker,
+        name="claude-feishu-delivery",
+        daemon=True,
+    )
+    worker.start()
+    try:
+        interactive = sys.stdin.isatty()
+        prompt_visible = False
+        while True:
+            if interactive and not prompt_visible:
+                print("feishu> ", end="", flush=True)
+                prompt_visible = True
+            ready, _, _ = select.select([sys.stdin], [], [], 0.5)
+            if not ready:
+                continue
+            line = sys.stdin.readline()
+            if line == "":
+                return 0
+            if not execute_command(line):
+                return 0
+            prompt_visible = False
+    finally:
+        stop_delivery.set()
+        worker.join(timeout=4)
+        gateway_lock.close()
+
+
+def main(argv: list[str]) -> int:
+    if not argv:
+        return console()
+    command = argv[0].lower()
+    if command == "configure":
+        return configure()
+    if command == "on":
+        set_enabled(True)
+        print("Feishu sync ON.")
+        return 0
+    if command == "off":
+        set_enabled(False)
+        print("Feishu sync OFF.")
+        return 0
+    if command == "status":
+        print(status_text())
+        return 0
+    if command == "test":
+        return 0 if test_message() else 1
+    if command == "logs":
+        show_logs()
+        return 0
+    print("Usage: claude-feishu [configure|on|off|status|test|logs]", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

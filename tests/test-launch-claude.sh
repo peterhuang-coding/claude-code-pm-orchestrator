@@ -58,7 +58,7 @@ CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=9 \
 for expected in \
   'ANTHROPIC_AUTH_TOKEN=auth-value' \
   'CLAUDE_CODE_OAUTH_TOKEN=oauth-value' \
-  'CLAUDE_CODE_EFFORT_LEVEL=xhigh' \
+  'CLAUDE_CODE_EFFORT_LEVEL=max' \
   'ANTHROPIC_BASE_URL=https://provider.example/anthropic' \
   'ANTHROPIC_MODEL=provider-model' \
   'ANTHROPIC_DEFAULT_HAIKU_MODEL=provider-haiku' \
@@ -73,7 +73,10 @@ done
 grep -Fxq "PM_HANDOFF_TOOL=$(dirname "$LAUNCHER")/pm-handoff.sh" "$OUT" || fail "handoff path missing"
 grep -Fxq "PM_HUB_TOOL=$(dirname "$LAUNCHER")/pm-hub.sh" "$OUT" || fail "Hub tool path missing"
 grep -Fxq "PM_CLAUDE_LAUNCHER=$LAUNCHER" "$OUT" || fail "neutral launcher path missing"
-grep -Fxq 'ARGS=<--permission-mode><bypassPermissions><--name><test-session>' "$OUT" || fail "permission arguments incorrect"
+grep -Fq '<--permission-mode><bypassPermissions>' "$OUT" || fail "permission arguments incorrect"
+grep -Fq '<--effort><max>' "$OUT" || fail "max effort argument missing"
+grep -Fq '<--teammate-mode><in-process>' "$OUT" || fail "Agent Team mode argument missing"
+grep -Fq '<--name><test-session>' "$OUT" || fail "session name missing"
 
 PROJECT="$SANDBOX/project"
 HUB="$SANDBOX/hub"
@@ -86,7 +89,8 @@ CLAUDE_LAUNCH_TEST_OUT="$OUT" \
 PM_HUB_HOME="$HUB" \
 "$ENTRYPOINT" "$PROJECT" --name cold-start
 
-grep -Fq 'ARGS=<--permission-mode><bypassPermissions><--name><cold-start><' "$OUT" || fail "cold-start prompt was not passed"
+grep -Fq '<--permission-mode><bypassPermissions>' "$OUT" || fail "cold-start permission mode missing"
+grep -Fq '<--name><cold-start><' "$OUT" || fail "cold-start prompt was not passed"
 grep -Fq 'sample' "$OUT" || fail "cold-start prompt omitted project id"
 
 mkdir -p "$SANDBOX/bin"
@@ -95,7 +99,7 @@ PATH="$SANDBOX:$PATH" \
 CLAUDE_LAUNCH_TEST_OUT="$OUT" \
 PM_HUB_HOME="$HUB" \
 "$SANDBOX/bin/claude-pm" "$PROJECT" --name symlink-start
-grep -Fq 'ARGS=<--permission-mode><bypassPermissions><--name><symlink-start><' "$OUT" || fail "symlinked entrypoint failed"
+grep -Fq '<--name><symlink-start><' "$OUT" || fail "symlinked entrypoint failed"
 
 for resume_flag in --continue -c --resume -r --from-pr; do
   if PATH="$SANDBOX:$PATH" CLAUDE_LAUNCH_TEST_OUT="$OUT" PM_HUB_HOME="$HUB" \
