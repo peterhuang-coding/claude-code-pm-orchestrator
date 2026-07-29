@@ -15,6 +15,7 @@ SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/pm-global-install-test.XXXXXX")
 trap 'rm -rf "$SANDBOX"' EXIT HUP INT TERM
 HOME_DIR="$SANDBOX/home"
 TARGET="$HOME_DIR/.claude"
+GLOBAL_BIN="$SANDBOX/global-bin"
 mkdir -p "$TARGET"
 mkdir -p "$TARGET/skills/pm-orchestrator/scripts"
 printf '%s\n' 'legacy launcher' > "$TARGET/skills/pm-orchestrator/scripts/launch-claude-glm.sh"
@@ -22,7 +23,7 @@ printf '%s\n' 'legacy launcher' > "$TARGET/skills/pm-orchestrator/scripts/launch
 printf '%s\n' '{"env":{"KEEP_ME":"yes"}}' > "$TARGET/settings.json"
 cp "$TARGET/settings.json" "$SANDBOX/settings.before"
 
-HOME="$HOME_DIR" "$INSTALLER"
+HOME="$HOME_DIR" PM_GLOBAL_BIN="$GLOBAL_BIN" "$INSTALLER"
 
 cmp -s "$SANDBOX/settings.before" "$TARGET/settings.json" || fail "installer changed settings.json"
 [ -x "$TARGET/skills/pm-orchestrator/scripts/pm-handoff.sh" ] || fail "handoff tool was not installed"
@@ -38,6 +39,8 @@ SOURCE_YOLO=$(CDPATH= cd -- "$SCRIPT_DIR/../.claude/skills/pm-orchestrator/scrip
 [ -x "$TARGET/bin/claude-feishu" ] || fail "Claude Feishu entrypoint was not installed"
 SOURCE_FEISHU=$(CDPATH= cd -- "$SCRIPT_DIR/../.claude/skills/pm-orchestrator/scripts" && pwd -P)/claude-feishu
 [ "$(readlink "$TARGET/bin/claude-feishu")" = "$SOURCE_FEISHU" ] || fail "Claude Feishu entrypoint does not point to source package"
+[ -x "$GLOBAL_BIN/claude-yolo" ] || fail "shell-visible Claude YOLO entrypoint was not installed"
+[ -x "$GLOBAL_BIN/claude-feishu" ] || fail "shell-visible Claude Feishu entrypoint was not installed"
 [ -x "$TARGET/skills/pm-orchestrator/scripts/pm-feishu-hook.py" ] || fail "Feishu hook was not installed"
 [ -f "$TARGET/skills/pm-orchestrator/scripts/pm_feishu.py" ] || fail "Feishu core was not installed"
 [ -x "$TARGET/skills/pm-orchestrator/scripts/pm-hub.sh" ] || fail "Hub tool was not installed"

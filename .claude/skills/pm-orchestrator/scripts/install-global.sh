@@ -40,5 +40,22 @@ ln -sf "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/claude-pm" "$TARGET_CLAUDE
 ln -sf "$SOURCE_CLAUDE/skills/pm-orchestrator/scripts/claude-yolo" "$TARGET_CLAUDE/bin/claude-yolo"
 ln -sf "$SOURCE_CLAUDE/skills/pm-orchestrator/scripts/claude-feishu" "$TARGET_CLAUDE/bin/claude-feishu"
 
+GLOBAL_BIN=${PM_GLOBAL_BIN:-}
+if [ -z "$GLOBAL_BIN" ]; then
+  EXISTING_YOLO=$(command -v claude-yolo 2>/dev/null || true)
+  if [ -n "$EXISTING_YOLO" ]; then
+    GLOBAL_BIN=$(dirname "$EXISTING_YOLO")
+  else
+    GLOBAL_BIN="$TARGET_CLAUDE/bin"
+  fi
+fi
+mkdir -p "$GLOBAL_BIN"
+if [ "$GLOBAL_BIN" != "$TARGET_CLAUDE/bin" ]; then
+  ln -sf "$TARGET_CLAUDE/bin/claude-pm" "$GLOBAL_BIN/claude-pm"
+  ln -sf "$TARGET_CLAUDE/bin/claude-yolo" "$GLOBAL_BIN/claude-yolo"
+  ln -sf "$TARGET_CLAUDE/bin/claude-feishu" "$GLOBAL_BIN/claude-feishu"
+fi
+
 printf 'Installed PM orchestrator into %s\n' "$TARGET_CLAUDE"
+printf 'Installed shell commands into %s\n' "$GLOBAL_BIN"
 printf 'Existing settings.json and credentials were not modified.\n'
