@@ -21,6 +21,7 @@ UNKNOWN="$SANDBOX/unknown"
 BIN="$SANDBOX/bin"
 OUT="$SANDBOX/claude.out"
 mkdir -p "$HOME_DIR" "$PROJECT" "$UNKNOWN" "$BIN"
+export PM_GLOBAL_BIN="$BIN"
 
 cat > "$BIN/claude" <<'EOF'
 #!/bin/sh
