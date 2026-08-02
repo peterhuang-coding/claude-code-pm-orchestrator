@@ -236,7 +236,13 @@ def append_log(kind: str, message: str, event_id: str = "") -> None:
         stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
 
-def save_lark_channel(chat_id: str, name: str = "Claude PM 总控") -> None:
+def save_lark_channel(
+    chat_id: str,
+    name: str = "Claude PM 总控",
+    *,
+    owner_open_id: str = "",
+    boss_root: str = "/Volumes/SanDisk2TB",
+) -> None:
     if not chat_id.startswith("oc_"):
         raise ValueError("A Feishu chat ID must start with oc_")
     _atomic_json(
@@ -245,6 +251,8 @@ def save_lark_channel(chat_id: str, name: str = "Claude PM 总控") -> None:
             "transport": "lark-cli",
             "chat_id": chat_id,
             "name": name,
+            "owner_open_id": owner_open_id,
+            "boss_root": boss_root,
             "configured_at": utc_now(),
         },
     )
