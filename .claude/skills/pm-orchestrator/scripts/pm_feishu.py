@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import fcntl
+import shutil
 import subprocess
 import tempfile
 import time
@@ -25,6 +26,7 @@ ON_PHRASES = {"我现在外出了"}
 OFF_PHRASES = {"我回来了", "我没外出", "没外出"}
 KEYCHAIN_SERVICE = "claude-feishu-gateway"
 KEYCHAIN_ACCOUNT = "webhook"
+LARK_CHANNEL_FILE = "channel.json"
 
 
 def utc_now() -> str:
@@ -234,6 +236,73 @@ def append_log(kind: str, message: str, event_id: str = "") -> None:
         stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def save_lark_channel(chat_id: str, name: str = "Claude PM 总控") -> None:
+    if not chat_id.startswith("oc_"):
+        raise ValueError("A Feishu chat ID must start with oc_")
+    _atomic_json(
+        runtime_dir() / LARK_CHANNEL_FILE,
+        {
+            "transport": "lark-cli",
+            "chat_id": chat_id,
+            "name": name,
+            "configured_at": utc_now(),
+        },
+    )
+
+
+def lark_chat_id() -> str:
+    test_chat_id = os.environ.get("PM_FEISHU_TEST_CHAT_ID", "")
+    if test_chat_id:
+        return test_chat_id
+    channel = _read_json(runtime_dir() / LARK_CHANNEL_FILE, {})
+    if channel.get("transport") != "lark-cli":
+        return ""
+    chat_id = str(channel.get("chat_id", ""))
+    return chat_id if chat_id.startswith("oc_") else ""
+
+
+def _lark_cli_send(
+    payload: dict[str, Any], retries: int, timeout: float
+) -> dict[str, Any]:
+    executable = shutil.which("lark-cli")
+    chat_id = lark_chat_id()
+    if not executable or not chat_id:
+        raise RuntimeError("Lark CLI channel is not configured")
+    content = payload.get("content", {})
+    text = str(content.get("text", "")) if isinstance(content, dict) else ""
+    last_error = "unknown delivery error"
+    for attempt in range(retries):
+        try:
+            result = subprocess.run(
+                [
+                    executable,
+                    "im",
+                    "+messages-send",
+                    "--as",
+                    "bot",
+                    "--chat-id",
+                    chat_id,
+                    "--text",
+                    text,
+                    "--format",
+                    "json",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=max(timeout, 1),
+                check=False,
+            )
+            parsed = json.loads(result.stdout)
+            if result.returncode != 0 or not isinstance(parsed, dict) or not parsed.get("ok"):
+                raise RuntimeError("Lark CLI rejected the message")
+            return parsed
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+            last_error = type(error).__name__
+            if attempt + 1 < retries:
+                time.sleep(0.2 * (2**attempt))
+    raise RuntimeError(f"Feishu delivery failed: {last_error}")
+
+
 def webhook_url() -> str:
     test_url = os.environ.get("PM_FEISHU_TEST_WEBHOOK", "")
     if test_url:
@@ -263,6 +332,8 @@ def webhook_url() -> str:
 
 
 def is_configured() -> bool:
+    if lark_chat_id() and shutil.which("lark-cli"):
+        return True
     try:
         webhook_url()
     except RuntimeError:
@@ -273,6 +344,12 @@ def is_configured() -> bool:
 def send_payload(
     payload: dict[str, Any], retries: int = 3, timeout: float = 10
 ) -> dict[str, Any]:
+    if (
+        not os.environ.get("PM_FEISHU_TEST_WEBHOOK")
+        and lark_chat_id()
+        and shutil.which("lark-cli")
+    ):
+        return _lark_cli_send(payload, retries=retries, timeout=timeout)
     url = webhook_url()
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     last_error = "unknown delivery error"

@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import select
+import shutil
 import subprocess
 import sys
 import threading
@@ -22,6 +23,7 @@ from pm_feishu import (
     load_state,
     pending_events,
     runtime_dir,
+    save_lark_channel,
     send_text,
     set_enabled,
 )
@@ -39,7 +41,55 @@ def status_text() -> str:
     )
 
 
-def configure() -> int:
+def _find_lark_channel(name: str = "Claude PM 总控") -> str:
+    executable = shutil.which("lark-cli")
+    if not executable:
+        return ""
+    result = subprocess.run(
+        [
+            executable,
+            "im",
+            "+chat-search",
+            "--as",
+            "user",
+            "--query",
+            name,
+            "--format",
+            "json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    try:
+        response = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return ""
+    chats = response.get("data", {}).get("chats", [])
+    exact = [chat for chat in chats if chat.get("name") == name]
+    if result.returncode == 0 and len(exact) == 1:
+        return str(exact[0].get("chat_id", ""))
+    return ""
+
+
+def configure(chat_id: str = "") -> int:
+    if shutil.which("lark-cli"):
+        resolved_chat_id = chat_id or _find_lark_channel()
+        if resolved_chat_id:
+            try:
+                save_lark_channel(resolved_chat_id)
+            except ValueError as error:
+                print(str(error), file=sys.stderr)
+                return 2
+            print(f"Lark CLI channel configured: {resolved_chat_id}")
+            return 0
+        print(
+            "Could not find exactly one 'Claude PM 总控' chat. "
+            "Pass its oc_ chat ID: claude-feishu configure oc_xxx",
+            file=sys.stderr,
+        )
+        return 1
+
     print("Paste the Feishu custom-bot webhook when macOS Keychain prompts.")
     result = subprocess.run(
         [
@@ -179,7 +229,7 @@ def main(argv: list[str]) -> int:
         return console()
     command = argv[0].lower()
     if command == "configure":
-        return configure()
+        return configure(argv[1] if len(argv) > 1 else "")
     if command == "on":
         set_enabled(True)
         print("Feishu sync ON.")
@@ -196,7 +246,10 @@ def main(argv: list[str]) -> int:
     if command == "logs":
         show_logs()
         return 0
-    print("Usage: claude-feishu [configure|on|off|status|test|logs]", file=sys.stderr)
+    print(
+        "Usage: claude-feishu [configure [oc_chat_id]|on|off|status|test|logs]",
+        file=sys.stderr,
+    )
     return 2
 
 

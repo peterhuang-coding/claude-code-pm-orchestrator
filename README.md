@@ -39,11 +39,24 @@ The Feishu gateway uses one boss Claude conversation rooted at
 `/Volumes/SanDisk2TB`. Project sessions, teammates, and subagents do not send
 messages to Feishu directly.
 
-Configure one Feishu custom-bot webhook in macOS Keychain:
+Install and authorize the official Feishu/Lark CLI once. Grant only the `im`
+scopes needed for messages and group chat management:
+
+```bash
+npx @larksuite/cli@latest install
+```
+
+Create or choose one private group named `Claude PM 总控`, add the CLI bot, then
+bind it automatically:
 
 ```bash
 claude-feishu configure
 ```
+
+The command discovers the group and stores only its non-secret `oc_` chat ID in
+the PM Hub runtime directory. OAuth credentials remain in the Lark CLI's native
+macOS credential store. A legacy custom-bot webhook remains supported as a
+fallback when Lark CLI is unavailable.
 
 Then use two terminals:
 
@@ -76,7 +89,7 @@ and `logs`. In the boss conversation, `我现在外出了` turns synchronization
 only: completed boss replies, failures, and attention notifications are copied
 to Feishu. Replies sent from Feishu are not yet routed back into Claude Code.
 Only one gateway console can run at a time. Pending messages expire after 24
-hours; webhook delivery is at-least-once, so an ambiguous network timeout can
+hours; delivery is at-least-once, so an ambiguous network timeout can
 produce a duplicate rather than silently losing a Claude reply.
 
 For image understanding, use `/imageinput /path/to/image.png Analyze this page`. Set `OPENROUTER_API_KEY` locally; the current coding model remains unchanged and only the image helper uses OpenRouter.

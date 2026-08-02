@@ -177,6 +177,49 @@ class FeishuGatewayCoreTests(unittest.TestCase):
             1, len(list((pm_feishu.runtime_dir() / "expired").glob("*.json")))
         )
 
+    def test_lark_cli_channel_is_configured_without_webhook(self) -> None:
+        pm_feishu.save_lark_channel("oc_test_channel")
+        with mock.patch.object(
+            pm_feishu.shutil, "which", return_value="/usr/bin/lark-cli"
+        ):
+            self.assertTrue(pm_feishu.is_configured())
+
+    def test_lark_cli_channel_delivers_text_as_bot(self) -> None:
+        pm_feishu.save_lark_channel("oc_test_channel")
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "ok": True,
+                    "identity": "bot",
+                    "data": {"message_id": "om_test"},
+                }
+            ),
+            stderr="",
+        )
+        with mock.patch.object(
+            pm_feishu.shutil, "which", return_value="/usr/bin/lark-cli"
+        ):
+            with mock.patch.object(
+                pm_feishu.subprocess, "run", return_value=completed
+            ) as runner:
+                response = pm_feishu.send_text("hello from Claude", retries=1)
+
+        self.assertTrue(response["ok"])
+        command = runner.call_args.args[0]
+        self.assertIn("+messages-send", command)
+        self.assertEqual(
+            "oc_test_channel", command[command.index("--chat-id") + 1]
+        )
+        self.assertEqual(
+            "hello from Claude", command[command.index("--text") + 1]
+        )
+
+    def test_invalid_lark_chat_id_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            pm_feishu.save_lark_channel("not-a-chat")
+
     def test_api_response_without_explicit_success_code_is_rejected(self) -> None:
         class Response:
             def __enter__(self):
