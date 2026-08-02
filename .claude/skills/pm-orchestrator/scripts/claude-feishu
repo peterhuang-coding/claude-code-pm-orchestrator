@@ -30,6 +30,7 @@ from pm_feishu import (
 from pm_feishu_inbound import (
     inbound_configured,
     listen_forever,
+    listener_runtime_status,
     process_pending_once,
 )
 
@@ -40,7 +41,9 @@ def status_text() -> str:
     mode = "ON" if state.get("enabled") else "OFF"
     session = str(boss.get("session_id") or "not-bound")[:12]
     connection = "configured" if is_configured() else "not-configured"
-    duplex = "ready" if inbound_configured() else "not-configured"
+    duplex = (
+        listener_runtime_status() if inbound_configured() else "not-configured"
+    )
     return (
         f"{mode} | Feishu {connection} | "
         f"Duplex {duplex} | boss {session} | pending {len(pending_events())}"
@@ -245,7 +248,7 @@ def console() -> int:
     def inbound_worker() -> None:
         while not stop_delivery.is_set():
             try:
-                process_pending_once()
+                process_pending_once(stop_event=stop_delivery)
             except Exception as error:
                 try:
                     append_log("inbound-worker-error", type(error).__name__)
@@ -287,10 +290,10 @@ def console() -> int:
             prompt_visible = False
     finally:
         stop_delivery.set()
-        worker.join(timeout=4)
-        inbound_delivery.join(timeout=4)
+        worker.join()
+        inbound_delivery.join()
         if inbound_listener is not None:
-            inbound_listener.join(timeout=6)
+            inbound_listener.join()
         gateway_lock.close()
 
 

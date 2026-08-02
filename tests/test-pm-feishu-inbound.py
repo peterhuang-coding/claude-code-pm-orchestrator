@@ -7,9 +7,11 @@ import importlib
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -125,15 +127,17 @@ class RemoteClaudeSessionTests(unittest.TestCase):
             os.environ["PM_HUB_HOME"] = self.previous_hub
         self.temp.cleanup()
 
-    def result(self, text: str) -> mock.Mock:
-        return mock.Mock(
-            returncode=0,
-            stdout=json.dumps({"type": "result", "result": text}),
-            stderr="",
+    def process(self, text: str) -> mock.Mock:
+        process = mock.Mock()
+        process.communicate.return_value = (
+            json.dumps({"type": "result", "result": text}),
+            "",
         )
+        process.returncode = 0
+        return process
 
     def test_first_command_creates_model_neutral_max_permission_session(self) -> None:
-        runner = mock.Mock(return_value=self.result("portfolio ready"))
+        runner = mock.Mock(return_value=self.process("portfolio ready"))
 
         output = inbound.execute_remote_command(
             "/do 汇报所有项目", runner=runner, executable="claude"
@@ -154,7 +158,7 @@ class RemoteClaudeSessionTests(unittest.TestCase):
 
     def test_second_command_resumes_same_session(self) -> None:
         runner = mock.Mock(
-            side_effect=[self.result("first"), self.result("second")]
+            side_effect=[self.process("first"), self.process("second")]
         )
         inbound.execute_remote_command("first command", runner=runner)
         session_id = inbound.load_remote_session()["session_id"]
@@ -168,20 +172,78 @@ class RemoteClaudeSessionTests(unittest.TestCase):
         self.assertNotIn("--session-id", command)
 
     def test_user_command_is_preserved_inside_remote_prompt(self) -> None:
-        runner = mock.Mock(return_value=self.result("done"))
+        runner = mock.Mock(return_value=self.process("done"))
         inbound.execute_remote_command("回到 beer-lens 继续最高优先级任务", runner=runner)
         prompt = runner.call_args.args[0][-1]
         self.assertIn("回到 beer-lens 继续最高优先级任务", prompt)
         self.assertIn("authorized Feishu boss command", prompt)
 
     def test_failed_or_invalid_claude_result_raises_bounded_error(self) -> None:
-        failed = mock.Mock(returncode=1, stdout="", stderr="provider unavailable")
+        failed = mock.Mock(returncode=1)
+        failed.communicate.return_value = ("", "provider unavailable")
         with self.assertRaisesRegex(RuntimeError, "provider unavailable"):
             inbound.execute_remote_command("run", runner=mock.Mock(return_value=failed))
 
-        invalid = mock.Mock(returncode=0, stdout="not-json", stderr="")
+        invalid = mock.Mock(returncode=0)
+        invalid.communicate.return_value = ("not-json", "")
         with self.assertRaisesRegex(RuntimeError, "invalid JSON"):
             inbound.execute_remote_command("run", runner=mock.Mock(return_value=invalid))
+
+    def test_stale_creating_session_rotates_identifier(self) -> None:
+        stale_id = "11111111-1111-4111-8111-111111111111"
+        pm_feishu._atomic_json(
+            pm_feishu.runtime_dir() / inbound.REMOTE_SESSION_FILE,
+            {"session_id": stale_id, "phase": "creating"},
+        )
+        runner = mock.Mock(return_value=self.process("recovered"))
+
+        inbound.execute_remote_command("continue", runner=runner)
+
+        command = runner.call_args.args[0]
+        new_id = command[command.index("--session-id") + 1]
+        self.assertNotEqual(stale_id, new_id)
+        self.assertEqual("ready", inbound.load_remote_session()["phase"])
+
+    def test_stop_event_terminates_active_claude_process(self) -> None:
+        stop_event = threading.Event()
+        process = mock.Mock(returncode=None)
+
+        def communicate(timeout=None):
+            if process.terminate.called:
+                process.returncode = -15
+                return "", "terminated"
+            if timeout is not None:
+                raise subprocess.TimeoutExpired("claude", timeout)
+            return "", ""
+
+        process.communicate.side_effect = communicate
+        process.wait.return_value = -15
+        runner = mock.Mock(return_value=process)
+        errors = []
+
+        thread = threading.Thread(
+            target=lambda: self._capture_remote_error(
+                errors, stop_event, runner
+            )
+        )
+        thread.start()
+        time.sleep(0.05)
+        stop_event.set()
+        thread.join(timeout=2)
+
+        self.assertFalse(thread.is_alive())
+        process.terminate.assert_called_once()
+        self.assertTrue(errors)
+        self.assertIsInstance(errors[0], inbound.RemoteCommandCancelled)
+
+    @staticmethod
+    def _capture_remote_error(errors, stop_event, runner) -> None:
+        try:
+            inbound.execute_remote_command(
+                "long task", stop_event=stop_event, runner=runner
+            )
+        except Exception as error:
+            errors.append(error)
 
 
 class InboundExecutionTests(unittest.TestCase):
@@ -224,6 +286,48 @@ class InboundExecutionTests(unittest.TestCase):
         self.assertIn("所有项目状态已汇总", replier.call_args_list[1].args[1])
         self.assertEqual([], inbound.pending_commands())
         self.assertEqual(1, len(list(inbound.inbound_dirs()["processed"].glob("*.json"))))
+
+    def test_interrupted_running_command_is_not_executed_again(self) -> None:
+        pending = inbound.pending_commands()[0]
+        running = inbound.claim_pending(pending)
+        executor = mock.Mock()
+        replier = mock.Mock(return_value={"ok": True})
+
+        self.assertEqual(
+            (0, 1),
+            inbound.process_pending_once(executor=executor, replier=replier),
+        )
+
+        executor.assert_not_called()
+        self.assertIn("不会自动重试", replier.call_args.args[1])
+        self.assertEqual(1, len(list(inbound.inbound_dirs()["failed"].glob("*.json"))))
+        self.assertFalse(running.exists())
+
+    def test_reply_failure_retries_reply_without_reexecuting(self) -> None:
+        executor = mock.Mock(return_value="已完成。")
+        replier = mock.Mock(
+            side_effect=[{"ok": True}, RuntimeError("reply unavailable")]
+        )
+
+        self.assertEqual(
+            (0, 1),
+            inbound.process_pending_once(executor=executor, replier=replier),
+        )
+        running = list(inbound.inbound_dirs()["running"].glob("*.json"))
+        self.assertEqual(1, len(running))
+        record = json.loads(running[0].read_text(encoding="utf-8"))
+        self.assertEqual("reply_pending", record["phase"])
+        self.assertEqual("已完成。", record["result"])
+
+        retry_replier = mock.Mock(return_value={"ok": True})
+        self.assertEqual(
+            (1, 0),
+            inbound.process_pending_once(
+                executor=executor, replier=retry_replier
+            ),
+        )
+        executor.assert_called_once()
+        retry_replier.assert_called_once_with("om_message_1", "已完成。")
 
     def test_failed_command_replies_and_moves_to_failed(self) -> None:
         executor = mock.Mock(side_effect=RuntimeError("provider unavailable"))
@@ -318,6 +422,34 @@ class LarkEventListenerTests(unittest.TestCase):
             inbound.run_lark_listener(
                 threading.Event(), popen=mock.Mock(return_value=process)
             )
+
+    def test_listener_stop_before_ready_exits_without_startup_error(self) -> None:
+        process = FakeEventProcess("", "")
+        stop_event = threading.Event()
+        stop_event.set()
+
+        received = inbound.run_lark_listener(
+            stop_event, popen=mock.Mock(return_value=process)
+        )
+
+        self.assertEqual(0, received)
+        self.assertTrue(process.terminated or process.stdin.closed)
+
+    def test_listener_drains_stderr_after_ready_marker(self) -> None:
+        stderr = "".join(
+            [
+                "[event] ready event_key=im.message.receive_v1\n",
+                "post-ready diagnostic\n",
+            ]
+        )
+        process = FakeEventProcess("", stderr)
+
+        inbound.run_lark_listener(
+            threading.Event(), popen=mock.Mock(return_value=process)
+        )
+
+        self.assertEqual(len(stderr), process.stderr.tell())
+        self.assertEqual("offline", inbound.listener_runtime_status())
 
     def test_cloud_off_ignores_new_event_lines(self) -> None:
         pm_feishu.set_enabled(False)

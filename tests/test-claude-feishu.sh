@@ -100,7 +100,10 @@ channel = json.loads((pm_feishu.runtime_dir() / "channel.json").read_text())
 assert channel["owner_open_id"] == "ou_test_owner"
 assert channel["boss_root"] == "/Volumes/SanDisk2TB"
 PY
-feishu status | grep -Fq 'Duplex ready' || fail "duplex readiness was not reported"
+feishu status | grep -Fq 'Duplex offline' ||
+  fail "configuration-only status was reported as live"
+grep -Fq 'process_pending_once(stop_event=stop_delivery)' "$CLI" ||
+  fail "gateway shutdown cannot cancel an active remote Claude command"
 
 feishu test >/dev/null
 grep -Fq 'Claude Feishu Gateway 测试成功' "$SANDBOX/requests.jsonl" ||

@@ -10,7 +10,7 @@ import subprocess
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from pm_feishu import (
     _atomic_json,
@@ -25,11 +25,19 @@ from pm_feishu import (
 
 ALLOWED_MESSAGE_TYPES = {"text", "post"}
 REMOTE_SESSION_FILE = "remote-session.json"
+LISTENER_STATE_FILE = "listener-state.json"
+
+
+class RemoteCommandCancelled(RuntimeError):
+    """Raised after a running Claude child has been stopped."""
 
 
 def inbound_dirs() -> dict[str, Path]:
     root = runtime_dir() / "inbound"
-    paths = {name: root / name for name in ("pending", "processed", "failed")}
+    paths = {
+        name: root / name
+        for name in ("pending", "running", "processed", "failed")
+    }
     for path in paths.values():
         path.mkdir(parents=True, exist_ok=True)
     return paths
@@ -88,13 +96,30 @@ def pending_commands() -> list[Path]:
     )
 
 
+def running_commands() -> list[Path]:
+    return sorted(
+        inbound_dirs()["running"].glob("*.json"),
+        key=lambda path: (path.stat().st_mtime_ns, path.name),
+    )
+
+
+def claim_pending(path: Path) -> Path:
+    """Atomically claim a command before any privileged side effect."""
+    target = inbound_dirs()["running"] / path.name
+    os.replace(path, target)
+    record = _read_json(target, {})
+    record.update({"phase": "executing", "claimed_at": utc_now()})
+    _atomic_json(target, record)
+    return target
+
+
 def _move_record(path: Path, state: str, details: dict[str, Any]) -> None:
     record = _read_json(path, {})
     record.update(details)
     record[f"{state}_at"] = utc_now()
+    _atomic_json(path, record)
     target = inbound_dirs()[state] / path.name
-    _atomic_json(target, record)
-    path.unlink(missing_ok=True)
+    os.replace(path, target)
 
 
 def mark_processed(path: Path, result: dict[str, Any]) -> None:
@@ -108,7 +133,7 @@ def mark_failed(path: Path, error: str) -> None:
 def load_remote_session() -> dict[str, Any]:
     return _read_json(
         runtime_dir() / REMOTE_SESSION_FILE,
-        {"session_id": None, "started": False, "updated_at": None},
+        {"session_id": None, "phase": "new", "updated_at": None},
     )
 
 
@@ -131,19 +156,24 @@ def _remote_prompt(command: str) -> str:
 def execute_remote_command(
     command: str,
     *,
-    runner: Callable[..., Any] = subprocess.run,
+    stop_event: Optional[threading.Event] = None,
+    runner: Callable[..., Any] = subprocess.Popen,
     executable: str = "",
 ) -> str:
     policy = channel_policy()
     boss_root = str(policy.get("boss_root") or "/Volumes/SanDisk2TB")
     session = load_remote_session()
+    phase = str(session.get("phase") or ("ready" if session.get("started") else "new"))
+    started = phase == "ready" and bool(session.get("session_id"))
     session_id = str(session.get("session_id") or uuid.uuid4())
-    started = bool(session.get("started"))
+    if phase == "creating":
+        session_id = str(uuid.uuid4())
+        started = False
     _atomic_json(
         runtime_dir() / REMOTE_SESSION_FILE,
         {
             "session_id": session_id,
-            "started": started,
+            "phase": "ready" if started else "creating",
             "boss_root": boss_root,
             "updated_at": utc_now(),
         },
@@ -168,19 +198,37 @@ def execute_remote_command(
 
     environment = os.environ.copy()
     environment.pop("PM_FEISHU_BOSS", None)
-    result = runner(
+    process = runner(
         invocation,
         cwd=boss_root,
         env=environment,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        check=False,
     )
-    if result.returncode != 0:
-        details = str(result.stderr or result.stdout or "unknown error")[:2_000]
+    stopper = stop_event or threading.Event()
+    stdout = ""
+    stderr = ""
+    while True:
+        if stopper.is_set():
+            if process.returncode is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+            raise RemoteCommandCancelled("Claude remote command was cancelled")
+        try:
+            stdout, stderr = process.communicate(timeout=0.25)
+            break
+        except subprocess.TimeoutExpired:
+            continue
+    if process.returncode != 0:
+        details = str(stderr or stdout or "unknown error")[:2_000]
         raise RuntimeError(f"Claude remote command failed: {details}")
     try:
-        response = json.loads(result.stdout)
+        response = json.loads(stdout)
     except (TypeError, json.JSONDecodeError) as error:
         raise RuntimeError("Claude returned invalid JSON") from error
     output = response.get("result") if isinstance(response, dict) else None
@@ -191,7 +239,7 @@ def execute_remote_command(
         runtime_dir() / REMOTE_SESSION_FILE,
         {
             "session_id": session_id,
-            "started": True,
+            "phase": "ready",
             "boss_root": boss_root,
             "updated_at": utc_now(),
         },
@@ -211,22 +259,72 @@ def handle_event_line(line: str) -> bool:
 
 def process_pending_once(
     *,
-    executor: Callable[[str], str] = execute_remote_command,
+    executor: Callable[..., str] = execute_remote_command,
     replier: Callable[[str, str], dict[str, Any]] = reply_text,
+    stop_event: Optional[threading.Event] = None,
 ) -> tuple[int, int]:
     if not bool(load_state().get("enabled")):
         return 0, 0
+    running = running_commands()
+    if running:
+        path = running[0]
+        record = _read_json(path, {})
+        message_id = str(record.get("message_id", ""))
+        if record.get("phase") == "reply_pending":
+            try:
+                final_reply = replier(message_id, str(record.get("result", "")))
+            except (OSError, RuntimeError, ValueError):
+                return 0, 1
+            mark_processed(
+                path,
+                {
+                    "result": str(record.get("result", "")),
+                    "acknowledgement": record.get("acknowledgement"),
+                    "reply": final_reply,
+                },
+            )
+            return 1, 0
+
+        details = "Gateway stopped during execution; command was not retried"
+        try:
+            replier(
+                message_id,
+                "上次执行被中断，结果无法确认。为避免重复执行高权限操作，系统不会自动重试。",
+            )
+        except (OSError, RuntimeError, ValueError):
+            pass
+        mark_failed(path, details)
+        return 0, 1
+
     paths = pending_commands()
     if not paths:
         return 0, 0
-    path = paths[0]
+    path = claim_pending(paths[0])
     record = _read_json(path, {})
     message_id = str(record.get("message_id", ""))
     content = str(record.get("content", ""))
     try:
-        acknowledgement = replier(message_id, "已收到，开始处理。")
-        result = executor(content)
-        final_reply = replier(message_id, result)
+        try:
+            acknowledgement = replier(message_id, "已收到，开始处理。")
+        except (OSError, RuntimeError, ValueError):
+            acknowledgement = None
+        if executor is execute_remote_command:
+            result = executor(content, stop_event=stop_event)
+        else:
+            result = executor(content)
+        record.update(
+            {
+                "phase": "reply_pending",
+                "result": result,
+                "acknowledgement": acknowledgement,
+                "executed_at": utc_now(),
+            }
+        )
+        _atomic_json(path, record)
+        try:
+            final_reply = replier(message_id, result)
+        except (OSError, RuntimeError, ValueError):
+            return 0, 1
         mark_processed(
             path,
             {
@@ -248,11 +346,58 @@ def process_pending_once(
 
 def inbound_configured() -> bool:
     policy = channel_policy()
+    boss_root = Path(str(policy.get("boss_root", ""))).expanduser()
     return bool(
         str(policy.get("chat_id", "")).startswith("oc_")
         and str(policy.get("owner_open_id", "")).startswith("ou_")
         and shutil.which("lark-cli")
+        and shutil.which("claude")
+        and boss_root.is_dir()
     )
+
+
+def _set_listener_runtime(status: str, message: str = "") -> None:
+    _atomic_json(
+        runtime_dir() / LISTENER_STATE_FILE,
+        {
+            "status": status,
+            "pid": os.getpid(),
+            "message": message[:500],
+            "updated_at": utc_now(),
+        },
+    )
+
+
+def listener_runtime_status() -> str:
+    state = _read_json(runtime_dir() / LISTENER_STATE_FILE, {})
+    status = str(state.get("status") or "offline")
+    if status not in {"starting", "ready"}:
+        return "offline"
+    try:
+        os.kill(int(state.get("pid", 0)), 0)
+    except (OSError, TypeError, ValueError):
+        return "offline"
+    return status
+
+
+def _stop_listener_process(process: Any) -> None:
+    try:
+        if process.stdin is not None and not process.stdin.closed:
+            process.stdin.close()
+    except OSError:
+        pass
+    if process.poll() is not None:
+        return
+    try:
+        process.wait(timeout=2)
+        return
+    except subprocess.TimeoutExpired:
+        process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
 
 
 def run_lark_listener(
@@ -283,31 +428,47 @@ def run_lark_listener(
     if process.stdin is None or process.stdout is None or process.stderr is None:
         raise RuntimeError("Lark event consumer pipes are unavailable")
 
-    ready = False
-    while not stop_event.is_set():
-        line = process.stderr.readline()
-        if not line:
-            break
-        if "[event] ready event_key=im.message.receive_v1" in line:
-            ready = True
-            break
-    if not ready:
+    ready_event = threading.Event()
+    stderr_done = threading.Event()
+    _set_listener_runtime("starting")
+
+    def drain_stderr() -> None:
         try:
-            process.stdin.close()
-        except OSError:
-            pass
-        if process.poll() is None:
-            process.terminate()
-        process.wait(timeout=5)
-        raise RuntimeError("Lark event consumer did not emit its ready marker")
+            for line in process.stderr:
+                cleaned = line.strip()
+                if "[event] ready event_key=im.message.receive_v1" in line:
+                    ready_event.set()
+                elif cleaned:
+                    try:
+                        append_log("inbound-listener", cleaned)
+                    except OSError:
+                        pass
+        finally:
+            stderr_done.set()
+
+    stderr_worker = threading.Thread(
+        target=drain_stderr,
+        name="claude-feishu-listener-stderr",
+        daemon=True,
+    )
+    stderr_worker.start()
+
+    while not ready_event.wait(0.05):
+        if stop_event.is_set():
+            _stop_listener_process(process)
+            stderr_worker.join(timeout=2)
+            _set_listener_runtime("offline", "stopped before ready")
+            return 0
+        if stderr_done.is_set() or process.poll() is not None:
+            _stop_listener_process(process)
+            stderr_worker.join(timeout=2)
+            _set_listener_runtime("offline", "ready marker missing")
+            raise RuntimeError("Lark event consumer did not emit its ready marker")
+    _set_listener_runtime("ready")
 
     def stop_watcher() -> None:
         stop_event.wait()
-        try:
-            if not process.stdin.closed:
-                process.stdin.close()
-        except OSError:
-            pass
+        _stop_listener_process(process)
 
     watcher = threading.Thread(
         target=stop_watcher,
@@ -324,16 +485,9 @@ def run_lark_listener(
             if handle_event_line(line):
                 received += 1
     finally:
-        try:
-            if not process.stdin.closed:
-                process.stdin.close()
-        except OSError:
-            pass
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.terminate()
-            process.wait(timeout=5)
+        _stop_listener_process(process)
+        stderr_worker.join(timeout=2)
+        _set_listener_runtime("offline")
     return received
 
 
