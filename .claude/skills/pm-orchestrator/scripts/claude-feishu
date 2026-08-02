@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
+from typing import Callable, Optional
 
 from pm_feishu import (
     KEYCHAIN_ACCOUNT,
@@ -33,6 +34,36 @@ from pm_feishu_inbound import (
     listener_runtime_status,
     process_pending_once,
 )
+
+
+class GatewayCommandStop(threading.Event):
+    def is_set(self) -> bool:
+        return super().is_set() or not bool(load_state().get("enabled"))
+
+
+class ActiveCommandCancellation:
+    """Own the cancellation event for the one serialized remote command."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._current: Optional[threading.Event] = None
+
+    def begin(self) -> threading.Event:
+        event = GatewayCommandStop()
+        with self._lock:
+            self._current = event
+        return event
+
+    def finish(self, event: threading.Event) -> None:
+        with self._lock:
+            if self._current is event:
+                self._current = None
+
+    def cancel(self) -> None:
+        with self._lock:
+            event = self._current
+        if event is not None:
+            event.set()
 
 
 def status_text() -> str:
@@ -180,7 +211,11 @@ def test_message() -> bool:
     return True
 
 
-def execute_command(command: str) -> bool:
+def execute_command(
+    command: str,
+    *,
+    cancel_active: Optional[Callable[[], None]] = None,
+) -> bool:
     normalized = " ".join(command.strip().lower().split())
     if normalized.startswith("cloud "):
         normalized = normalized[6:]
@@ -189,6 +224,8 @@ def execute_command(command: str) -> bool:
         print("Feishu sync ON.")
     elif normalized == "off":
         set_enabled(False)
+        if cancel_active is not None:
+            cancel_active()
         print("Feishu sync OFF.")
     elif normalized == "status":
         print(status_text())
@@ -226,6 +263,7 @@ def console() -> int:
         print(str(error), file=sys.stderr)
 
     stop_delivery = threading.Event()
+    active_command = ActiveCommandCancellation()
 
     def delivery_worker() -> None:
         while not stop_delivery.is_set():
@@ -247,13 +285,16 @@ def console() -> int:
 
     def inbound_worker() -> None:
         while not stop_delivery.is_set():
+            command_stop = active_command.begin()
             try:
-                process_pending_once(stop_event=stop_delivery)
+                process_pending_once(stop_event=command_stop)
             except Exception as error:
                 try:
                     append_log("inbound-worker-error", type(error).__name__)
                 except OSError:
                     pass
+            finally:
+                active_command.finish(command_stop)
             stop_delivery.wait(0.5)
 
     inbound_delivery = threading.Thread(
@@ -285,11 +326,12 @@ def console() -> int:
             line = sys.stdin.readline()
             if line == "":
                 return 0
-            if not execute_command(line):
+            if not execute_command(line, cancel_active=active_command.cancel):
                 return 0
             prompt_visible = False
     finally:
         stop_delivery.set()
+        active_command.cancel()
         worker.join()
         inbound_delivery.join()
         if inbound_listener is not None:

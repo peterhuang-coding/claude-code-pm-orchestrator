@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import shutil
 import subprocess
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -153,12 +155,74 @@ def _remote_prompt(command: str) -> str:
     )
 
 
+def _process_identity(pid: int) -> str:
+    result = subprocess.run(
+        ["ps", "-o", "lstart=", "-p", str(pid)],
+        capture_output=True,
+        text=True,
+        timeout=2,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _terminate_process_group(process: Any) -> None:
+    if process.returncode is not None:
+        return
+    try:
+        os.killpg(int(process.pid), signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except (OSError, ValueError):
+        process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(int(process.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except (OSError, ValueError):
+            process.kill()
+        process.wait(timeout=5)
+
+
+def terminate_recorded_process(record: dict[str, Any]) -> bool:
+    """Stop a surviving command group only when its process identity still matches."""
+    try:
+        process_group_id = int(record.get("process_group_id", 0))
+    except (TypeError, ValueError):
+        return False
+    expected_identity = str(record.get("process_identity", ""))
+    if process_group_id <= 0 or not expected_identity:
+        return False
+    if _process_identity(process_group_id) != expected_identity:
+        return False
+    try:
+        os.killpg(process_group_id, signal.SIGTERM)
+    except ProcessLookupError:
+        return False
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(process_group_id, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.05)
+    try:
+        os.killpg(process_group_id, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    return True
+
+
 def execute_remote_command(
     command: str,
     *,
     stop_event: Optional[threading.Event] = None,
     runner: Callable[..., Any] = subprocess.Popen,
     executable: str = "",
+    on_started: Optional[Callable[[int, str], None]] = None,
 ) -> str:
     policy = channel_policy()
     boss_root = str(policy.get("boss_root") or "/Volumes/SanDisk2TB")
@@ -166,14 +230,14 @@ def execute_remote_command(
     phase = str(session.get("phase") or ("ready" if session.get("started") else "new"))
     started = phase == "ready" and bool(session.get("session_id"))
     session_id = str(session.get("session_id") or uuid.uuid4())
-    if phase == "creating":
+    if phase in {"creating", "resuming"}:
         session_id = str(uuid.uuid4())
         started = False
     _atomic_json(
         runtime_dir() / REMOTE_SESSION_FILE,
         {
             "session_id": session_id,
-            "phase": "ready" if started else "creating",
+            "phase": "resuming" if started else "creating",
             "boss_root": boss_root,
             "updated_at": utc_now(),
         },
@@ -205,19 +269,16 @@ def execute_remote_command(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        start_new_session=True,
     )
+    if on_started is not None:
+        on_started(int(process.pid), _process_identity(int(process.pid)))
     stopper = stop_event or threading.Event()
     stdout = ""
     stderr = ""
     while True:
         if stopper.is_set():
-            if process.returncode is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
+            _terminate_process_group(process)
             raise RemoteCommandCancelled("Claude remote command was cancelled")
         try:
             stdout, stderr = process.communicate(timeout=0.25)
@@ -270,6 +331,19 @@ def process_pending_once(
         path = running[0]
         record = _read_json(path, {})
         message_id = str(record.get("message_id", ""))
+        if record.get("phase") == "completed":
+            try:
+                mark_processed(
+                    path,
+                    {
+                        "result": str(record.get("result", "")),
+                        "acknowledgement": record.get("acknowledgement"),
+                        "reply": record.get("reply"),
+                    },
+                )
+            except OSError:
+                return 0, 1
+            return 1, 0
         if record.get("phase") == "reply_pending":
             try:
                 final_reply = replier(message_id, str(record.get("result", "")))
@@ -286,6 +360,7 @@ def process_pending_once(
             return 1, 0
 
         details = "Gateway stopped during execution; command was not retried"
+        terminate_recorded_process(record)
         try:
             replier(
                 message_id,
@@ -309,7 +384,21 @@ def process_pending_once(
         except (OSError, RuntimeError, ValueError):
             acknowledgement = None
         if executor is execute_remote_command:
-            result = executor(content, stop_event=stop_event)
+            def record_process(process_group_id: int, identity: str) -> None:
+                record.update(
+                    {
+                        "process_group_id": process_group_id,
+                        "process_identity": identity,
+                        "process_started_at": utc_now(),
+                    }
+                )
+                _atomic_json(path, record)
+
+            result = executor(
+                content,
+                stop_event=stop_event,
+                on_started=record_process,
+            )
         else:
             result = executor(content)
         record.update(
@@ -325,14 +414,19 @@ def process_pending_once(
             final_reply = replier(message_id, result)
         except (OSError, RuntimeError, ValueError):
             return 0, 1
-        mark_processed(
-            path,
-            {
-                "result": result,
-                "acknowledgement": acknowledgement,
-                "reply": final_reply,
-            },
-        )
+        record.update({"phase": "completed", "reply": final_reply})
+        try:
+            _atomic_json(path, record)
+            mark_processed(
+                path,
+                {
+                    "result": result,
+                    "acknowledgement": acknowledgement,
+                    "reply": final_reply,
+                },
+            )
+        except OSError:
+            return 0, 1
         return 1, 0
     except (OSError, RuntimeError, ValueError) as error:
         details = str(error)[:1_500] or type(error).__name__

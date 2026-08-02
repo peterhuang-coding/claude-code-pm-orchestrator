@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import importlib
+import importlib.machinery
 import io
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -23,6 +25,9 @@ sys.path.insert(0, str(SCRIPTS))
 
 pm_feishu = importlib.import_module("pm_feishu")
 inbound = importlib.import_module("pm_feishu_inbound")
+gateway_cli = importlib.machinery.SourceFileLoader(
+    "claude_feishu_gateway", str(SCRIPTS / "claude-feishu")
+).load_module()
 
 
 def message_event(**overrides: object) -> dict[str, object]:
@@ -134,6 +139,7 @@ class RemoteClaudeSessionTests(unittest.TestCase):
             "",
         )
         process.returncode = 0
+        process.pid = 4321
         return process
 
     def test_first_command_creates_model_neutral_max_permission_session(self) -> None:
@@ -155,6 +161,7 @@ class RemoteClaudeSessionTests(unittest.TestCase):
         self.assertNotIn("--model", command)
         self.assertEqual("/Volumes/SanDisk2TB", runner.call_args.kwargs["cwd"])
         self.assertNotIn("PM_FEISHU_BOSS", runner.call_args.kwargs["env"])
+        self.assertTrue(runner.call_args.kwargs["start_new_session"])
 
     def test_second_command_resumes_same_session(self) -> None:
         runner = mock.Mock(
@@ -204,9 +211,25 @@ class RemoteClaudeSessionTests(unittest.TestCase):
         self.assertNotEqual(stale_id, new_id)
         self.assertEqual("ready", inbound.load_remote_session()["phase"])
 
+    def test_stale_resuming_session_rotates_identifier(self) -> None:
+        stale_id = "22222222-2222-4222-8222-222222222222"
+        pm_feishu._atomic_json(
+            pm_feishu.runtime_dir() / inbound.REMOTE_SESSION_FILE,
+            {"session_id": stale_id, "phase": "resuming"},
+        )
+        runner = mock.Mock(return_value=self.process("recovered"))
+
+        inbound.execute_remote_command("continue", runner=runner)
+
+        command = runner.call_args.args[0]
+        self.assertIn("--session-id", command)
+        self.assertNotIn("--resume", command)
+        self.assertNotEqual(stale_id, command[command.index("--session-id") + 1])
+
     def test_stop_event_terminates_active_claude_process(self) -> None:
         stop_event = threading.Event()
         process = mock.Mock(returncode=None)
+        process.pid = 4321
 
         def communicate(timeout=None):
             if process.terminate.called:
@@ -221,20 +244,32 @@ class RemoteClaudeSessionTests(unittest.TestCase):
         runner = mock.Mock(return_value=process)
         errors = []
 
-        thread = threading.Thread(
-            target=lambda: self._capture_remote_error(
-                errors, stop_event, runner
+        with mock.patch.object(inbound.os, "killpg") as killpg:
+            thread = threading.Thread(
+                target=lambda: self._capture_remote_error(
+                    errors, stop_event, runner
+                )
             )
-        )
-        thread.start()
-        time.sleep(0.05)
-        stop_event.set()
-        thread.join(timeout=2)
+            thread.start()
+            time.sleep(0.05)
+            stop_event.set()
+            thread.join(timeout=2)
 
         self.assertFalse(thread.is_alive())
-        process.terminate.assert_called_once()
+        killpg.assert_called_once_with(4321, signal.SIGTERM)
         self.assertTrue(errors)
         self.assertIsInstance(errors[0], inbound.RemoteCommandCancelled)
+
+    def test_process_start_is_reported_for_crash_recovery(self) -> None:
+        process = self.process("done")
+        started = mock.Mock()
+
+        with mock.patch.object(inbound, "_process_identity", return_value="born"):
+            inbound.execute_remote_command(
+                "run", runner=mock.Mock(return_value=process), on_started=started
+            )
+
+        started.assert_called_once_with(4321, "born")
 
     @staticmethod
     def _capture_remote_error(errors, stop_event, runner) -> None:
@@ -290,15 +325,20 @@ class InboundExecutionTests(unittest.TestCase):
     def test_interrupted_running_command_is_not_executed_again(self) -> None:
         pending = inbound.pending_commands()[0]
         running = inbound.claim_pending(pending)
+        record = json.loads(running.read_text(encoding="utf-8"))
+        record.update({"process_group_id": 4321, "process_identity": "born"})
+        pm_feishu._atomic_json(running, record)
         executor = mock.Mock()
         replier = mock.Mock(return_value={"ok": True})
 
-        self.assertEqual(
-            (0, 1),
-            inbound.process_pending_once(executor=executor, replier=replier),
-        )
+        with mock.patch.object(inbound, "terminate_recorded_process") as terminate:
+            self.assertEqual(
+                (0, 1),
+                inbound.process_pending_once(executor=executor, replier=replier),
+            )
 
         executor.assert_not_called()
+        terminate.assert_called_once()
         self.assertIn("不会自动重试", replier.call_args.args[1])
         self.assertEqual(1, len(list(inbound.inbound_dirs()["failed"].glob("*.json"))))
         self.assertFalse(running.exists())
@@ -328,6 +368,31 @@ class InboundExecutionTests(unittest.TestCase):
         )
         executor.assert_called_once()
         retry_replier.assert_called_once_with("om_message_1", "已完成。")
+
+    def test_processed_move_failure_does_not_send_failure_or_reexecute(self) -> None:
+        executor = mock.Mock(return_value="已完成。")
+        replier = mock.Mock(return_value={"ok": True})
+
+        with mock.patch.object(
+            inbound, "mark_processed", side_effect=OSError("disk busy")
+        ):
+            self.assertEqual(
+                (0, 1),
+                inbound.process_pending_once(executor=executor, replier=replier),
+            )
+
+        running = list(inbound.inbound_dirs()["running"].glob("*.json"))
+        self.assertEqual(1, len(running))
+        record = json.loads(running[0].read_text(encoding="utf-8"))
+        self.assertEqual("completed", record["phase"])
+        self.assertEqual(2, replier.call_count)
+
+        self.assertEqual(
+            (1, 0),
+            inbound.process_pending_once(executor=executor, replier=replier),
+        )
+        executor.assert_called_once()
+        self.assertEqual(2, replier.call_count)
 
     def test_failed_command_replies_and_moves_to_failed(self) -> None:
         executor = mock.Mock(side_effect=RuntimeError("provider unavailable"))
@@ -359,6 +424,39 @@ class InboundExecutionTests(unittest.TestCase):
         self.assertTrue(
             inbound.handle_event_line(json.dumps(message_event(), ensure_ascii=False))
         )
+
+
+class GatewayCancellationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.previous_hub = os.environ.get("PM_HUB_HOME")
+        os.environ["PM_HUB_HOME"] = self.temp.name
+
+    def tearDown(self) -> None:
+        if self.previous_hub is None:
+            os.environ.pop("PM_HUB_HOME", None)
+        else:
+            os.environ["PM_HUB_HOME"] = self.previous_hub
+        self.temp.cleanup()
+
+    def test_cloud_off_cancels_active_remote_command(self) -> None:
+        pm_feishu.set_enabled(True)
+        controller = gateway_cli.ActiveCommandCancellation()
+        active = controller.begin()
+        self.assertFalse(active.is_set())
+
+        gateway_cli.execute_command("cloud off", cancel_active=controller.cancel)
+
+        self.assertTrue(active.is_set())
+
+    def test_external_off_state_cancels_active_remote_command(self) -> None:
+        pm_feishu.set_enabled(True)
+        controller = gateway_cli.ActiveCommandCancellation()
+        active = controller.begin()
+
+        pm_feishu.set_enabled(False)
+
+        self.assertTrue(active.is_set())
 
 
 class FakeEventProcess:

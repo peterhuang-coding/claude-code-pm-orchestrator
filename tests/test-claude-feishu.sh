@@ -116,7 +116,7 @@ assert channel["boss_root"] == "/Volumes/SanDisk2TB"
 PY
 feishu status | grep -Fq 'Duplex offline' ||
   fail "configuration-only status was reported as live"
-grep -Fq 'process_pending_once(stop_event=stop_delivery)' "$CLI" ||
+grep -Fq 'process_pending_once(stop_event=command_stop)' "$CLI" ||
   fail "gateway shutdown cannot cancel an active remote Claude command"
 
 feishu test >/dev/null
@@ -156,10 +156,9 @@ grep -Fq '老板回复已经完成' "$SANDBOX/requests.jsonl" ||
 
 EVENT='{"type":"im.message.receive_v1","chat_id":"oc_test_chat","chat_type":"group","message_id":"om_duplex_e2e","message_type":"text","sender_id":"ou_test_owner","sender_type":"user","content":"汇报三个项目","create_time":"1785680000000"}'
 (for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-   [ ! -s "$SANDBOX/claude.log" ] || break
+   [ ! -f "$SANDBOX/hub/runtime/feishu/inbound/processed/om_duplex_e2e.json" ] || break
    sleep 0.2
  done
- sleep 0.2
  printf 'cloud quit\n') | \
   PM_HUB_HOME="$SANDBOX/hub" \
   PM_FEISHU_TEST_WEBHOOK="$WEBHOOK" \
@@ -171,6 +170,11 @@ EVENT='{"type":"im.message.receive_v1","chat_id":"oc_test_chat","chat_type":"gro
   "$CLI" > "$SANDBOX/duplex.out"
 grep -Fq '汇报三个项目' "$SANDBOX/claude.log" ||
   fail "inbound owner command did not reach Claude"
+CLAUDE_CALL_COUNT=$(grep -c '^--print ' "$SANDBOX/claude.log")
+if [ "$CLAUDE_CALL_COUNT" -ne 1 ]; then
+  cat "$SANDBOX/claude.log" >&2
+  fail "inbound owner command executed $CLAUDE_CALL_COUNT times"
+fi
 grep -Fq '已收到' "$SANDBOX/replies.log" ||
   fail "inbound command was not acknowledged"
 grep -Fq '远程 Claude 已执行' "$SANDBOX/replies.log" ||
