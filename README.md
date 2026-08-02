@@ -94,8 +94,9 @@ and `logs`. In the boss conversation, `我现在外出了` turns synchronization
 `我回来了`, `我没外出`, or `没外出` turns it off. The current release is outbound
 and inbound: completed local boss replies, failures, and attention notifications
 are copied to Feishu, while owner-authored Feishu messages drive the dedicated
-remote boss session. `cloud off` ignores new inbound commands and pauses queued
-work; `cloud on` resumes it. Messages from bots, other users, or other chats are
+remote boss session. `cloud off` ignores new inbound commands, pauses queued
+work, and cancels the active remote command; `cloud on` resumes with a fresh
+command lifecycle. Messages from bots, other users, or other chats are
 never executed. Only one gateway console can run at a time. Pending outbound
 messages expire after 24 hours; outbound delivery is at-least-once. Durable
 inbound message IDs and an atomic running state provide at-most-once command
