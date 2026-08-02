@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import importlib
+import io
 import json
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -180,6 +182,149 @@ class RemoteClaudeSessionTests(unittest.TestCase):
         invalid = mock.Mock(returncode=0, stdout="not-json", stderr="")
         with self.assertRaisesRegex(RuntimeError, "invalid JSON"):
             inbound.execute_remote_command("run", runner=mock.Mock(return_value=invalid))
+
+
+class InboundExecutionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.previous_hub = os.environ.get("PM_HUB_HOME")
+        os.environ["PM_HUB_HOME"] = self.temp.name
+        pm_feishu.save_lark_channel(
+            "oc_owner_chat",
+            owner_open_id="ou_owner",
+            boss_root="/Volumes/SanDisk2TB",
+        )
+        pm_feishu.set_enabled(True)
+        inbound.enqueue_inbound_event(message_event())
+
+    def tearDown(self) -> None:
+        if self.previous_hub is None:
+            os.environ.pop("PM_HUB_HOME", None)
+        else:
+            os.environ["PM_HUB_HOME"] = self.previous_hub
+        self.temp.cleanup()
+
+    def test_pending_command_is_acknowledged_executed_and_replied(self) -> None:
+        executor = mock.Mock(return_value="所有项目状态已汇总。")
+        replier = mock.Mock(
+            side_effect=[
+                {"ok": True, "data": {"message_id": "om_ack"}},
+                {"ok": True, "data": {"message_id": "om_result"}},
+            ]
+        )
+
+        self.assertEqual(
+            (1, 0),
+            inbound.process_pending_once(executor=executor, replier=replier),
+        )
+
+        executor.assert_called_once_with("/do 汇报所有项目当前状态")
+        self.assertEqual("om_message_1", replier.call_args_list[0].args[0])
+        self.assertIn("已收到", replier.call_args_list[0].args[1])
+        self.assertIn("所有项目状态已汇总", replier.call_args_list[1].args[1])
+        self.assertEqual([], inbound.pending_commands())
+        self.assertEqual(1, len(list(inbound.inbound_dirs()["processed"].glob("*.json"))))
+
+    def test_failed_command_replies_and_moves_to_failed(self) -> None:
+        executor = mock.Mock(side_effect=RuntimeError("provider unavailable"))
+        replier = mock.Mock(return_value={"ok": True})
+
+        self.assertEqual(
+            (0, 1),
+            inbound.process_pending_once(executor=executor, replier=replier),
+        )
+
+        self.assertIn("provider unavailable", replier.call_args_list[-1].args[1])
+        self.assertEqual(1, len(list(inbound.inbound_dirs()["failed"].glob("*.json"))))
+
+    def test_disabled_gateway_leaves_inbound_queue_untouched(self) -> None:
+        pm_feishu.set_enabled(False)
+        executor = mock.Mock()
+        replier = mock.Mock()
+        self.assertEqual(
+            (0, 0),
+            inbound.process_pending_once(executor=executor, replier=replier),
+        )
+        executor.assert_not_called()
+        replier.assert_not_called()
+        self.assertEqual(1, len(inbound.pending_commands()))
+
+    def test_event_line_queues_valid_json_and_ignores_invalid_json(self) -> None:
+        inbound.pending_commands()[0].unlink()
+        self.assertFalse(inbound.handle_event_line("not-json"))
+        self.assertTrue(
+            inbound.handle_event_line(json.dumps(message_event(), ensure_ascii=False))
+        )
+
+
+class FakeEventProcess:
+    def __init__(self, stdout: str, stderr: str) -> None:
+        self.stdout = io.StringIO(stdout)
+        self.stderr = io.StringIO(stderr)
+        self.stdin = io.StringIO()
+        self.returncode = None
+        self.terminated = False
+
+    def poll(self):
+        return self.returncode
+
+    def wait(self, timeout=None) -> int:
+        self.returncode = 0
+        return 0
+
+    def terminate(self) -> None:
+        self.terminated = True
+        self.returncode = 0
+
+
+class LarkEventListenerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.previous_hub = os.environ.get("PM_HUB_HOME")
+        os.environ["PM_HUB_HOME"] = self.temp.name
+        pm_feishu.save_lark_channel(
+            "oc_owner_chat",
+            owner_open_id="ou_owner",
+            boss_root="/Volumes/SanDisk2TB",
+        )
+        pm_feishu.set_enabled(True)
+
+    def tearDown(self) -> None:
+        if self.previous_hub is None:
+            os.environ.pop("PM_HUB_HOME", None)
+        else:
+            os.environ["PM_HUB_HOME"] = self.previous_hub
+        self.temp.cleanup()
+
+    def test_listener_waits_for_ready_and_queues_ndjson_event(self) -> None:
+        process = FakeEventProcess(
+            json.dumps(message_event(), ensure_ascii=False) + "\n",
+            "[event] ready event_key=im.message.receive_v1\n",
+        )
+        popen = mock.Mock(return_value=process)
+
+        received = inbound.run_lark_listener(threading.Event(), popen=popen)
+
+        self.assertEqual(1, received)
+        self.assertEqual(1, len(inbound.pending_commands()))
+        command = popen.call_args.args[0]
+        self.assertEqual("event", command[1])
+        self.assertIn("im.message.receive_v1", command)
+        self.assertTrue(process.stdin.closed)
+
+    def test_listener_rejects_stream_without_ready_marker(self) -> None:
+        process = FakeEventProcess("", "connection failed\n")
+        with self.assertRaisesRegex(RuntimeError, "ready"):
+            inbound.run_lark_listener(
+                threading.Event(), popen=mock.Mock(return_value=process)
+            )
+
+    def test_cloud_off_ignores_new_event_lines(self) -> None:
+        pm_feishu.set_enabled(False)
+        self.assertFalse(
+            inbound.handle_event_line(json.dumps(message_event(), ensure_ascii=False))
+        )
+        self.assertEqual([], inbound.pending_commands())
 
 
 if __name__ == "__main__":

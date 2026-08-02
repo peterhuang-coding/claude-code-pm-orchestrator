@@ -15,6 +15,22 @@ SANDBOX=$(CDPATH= cd -- "$SANDBOX" && pwd -P)
 SERVER_PID=
 trap '[ -z "$SERVER_PID" ] || kill "$SERVER_PID" 2>/dev/null || true; rm -rf "$SANDBOX"' EXIT HUP INT TERM
 
+mkdir -p "$SANDBOX/bin"
+cat > "$SANDBOX/bin/lark-cli" <<'SH'
+#!/bin/sh
+if [ "${1-}" = auth ] && [ "${2-}" = status ]; then
+  printf '%s\n' '{"identities":{"user":{"status":"ready","openId":"ou_test_owner"}}}'
+  exit 0
+fi
+if [ "${1-}" = event ]; then
+  echo '[event] ready event_key=im.message.receive_v1' >&2
+  while IFS= read -r _line; do :; done
+fi
+SH
+chmod +x "$SANDBOX/bin/lark-cli"
+PATH="$SANDBOX/bin:$PATH"
+export PATH
+
 cat > "$SANDBOX/server.py" <<'PY'
 import http.server
 import json
@@ -69,6 +85,22 @@ feishu off >/dev/null
 feishu status | grep -Fq 'OFF' || fail "off state was not reported"
 feishu on >/dev/null
 feishu status | grep -Fq 'ON' || fail "on state was not reported"
+
+feishu configure oc_test_chat >/dev/null
+PM_HUB_HOME="$SANDBOX/hub" python3 - "$ROOT" <<'PY'
+import sys
+import json
+from pathlib import Path
+
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / ".claude/skills/pm-orchestrator/scripts"))
+import pm_feishu
+
+channel = json.loads((pm_feishu.runtime_dir() / "channel.json").read_text())
+assert channel["owner_open_id"] == "ou_test_owner"
+assert channel["boss_root"] == "/Volumes/SanDisk2TB"
+PY
+feishu status | grep -Fq 'Duplex ready' || fail "duplex readiness was not reported"
 
 feishu test >/dev/null
 grep -Fq 'Claude Feishu Gateway 测试成功' "$SANDBOX/requests.jsonl" ||

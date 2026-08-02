@@ -420,6 +420,51 @@ def send_text(
     )
 
 
+def reply_text(
+    message_id: str, text: str, retries: int = 3, timeout: float = 10
+) -> dict[str, Any]:
+    executable = shutil.which("lark-cli")
+    if not executable or not message_id.startswith("om_"):
+        raise RuntimeError("Lark CLI reply target is not configured")
+    bounded = _text_payload("", text)["content"]["text"]
+    idempotency_key = "reply-" + hashlib.sha256(
+        f"{message_id}\n{bounded}".encode("utf-8")
+    ).hexdigest()[:32]
+    last_error = "unknown delivery error"
+    for attempt in range(retries):
+        try:
+            result = subprocess.run(
+                [
+                    executable,
+                    "im",
+                    "+messages-reply",
+                    "--as",
+                    "bot",
+                    "--message-id",
+                    message_id,
+                    "--text",
+                    bounded,
+                    "--idempotency-key",
+                    idempotency_key,
+                    "--format",
+                    "json",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=max(timeout, 1),
+                check=False,
+            )
+            parsed = json.loads(result.stdout)
+            if result.returncode != 0 or not isinstance(parsed, dict) or not parsed.get("ok"):
+                raise RuntimeError("Lark CLI rejected the reply")
+            return parsed
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+            last_error = type(error).__name__
+            if attempt + 1 < retries:
+                time.sleep(0.2 * (2**attempt))
+    raise RuntimeError(f"Feishu reply failed: {last_error}")
+
+
 def deliver_pending(
     retries: int = 1, timeout: float = 3
 ) -> tuple[int, int]:

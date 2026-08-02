@@ -7,11 +7,20 @@ import json
 import os
 import shutil
 import subprocess
+import threading
 import uuid
 from pathlib import Path
 from typing import Any, Callable
 
-from pm_feishu import _atomic_json, _read_json, runtime_dir, utc_now
+from pm_feishu import (
+    _atomic_json,
+    _read_json,
+    append_log,
+    load_state,
+    reply_text,
+    runtime_dir,
+    utc_now,
+)
 
 
 ALLOWED_MESSAGE_TYPES = {"text", "post"}
@@ -188,3 +197,154 @@ def execute_remote_command(
         },
     )
     return output[:20_000]
+
+
+def handle_event_line(line: str) -> bool:
+    if not bool(load_state().get("enabled")):
+        return False
+    try:
+        event = json.loads(line)
+    except (TypeError, json.JSONDecodeError):
+        return False
+    return isinstance(event, dict) and enqueue_inbound_event(event)
+
+
+def process_pending_once(
+    *,
+    executor: Callable[[str], str] = execute_remote_command,
+    replier: Callable[[str, str], dict[str, Any]] = reply_text,
+) -> tuple[int, int]:
+    if not bool(load_state().get("enabled")):
+        return 0, 0
+    paths = pending_commands()
+    if not paths:
+        return 0, 0
+    path = paths[0]
+    record = _read_json(path, {})
+    message_id = str(record.get("message_id", ""))
+    content = str(record.get("content", ""))
+    try:
+        acknowledgement = replier(message_id, "已收到，开始处理。")
+        result = executor(content)
+        final_reply = replier(message_id, result)
+        mark_processed(
+            path,
+            {
+                "result": result,
+                "acknowledgement": acknowledgement,
+                "reply": final_reply,
+            },
+        )
+        return 1, 0
+    except (OSError, RuntimeError, ValueError) as error:
+        details = str(error)[:1_500] or type(error).__name__
+        try:
+            replier(message_id, f"Claude 远程任务失败：{details}")
+        except (OSError, RuntimeError, ValueError):
+            pass
+        mark_failed(path, details)
+        return 0, 1
+
+
+def inbound_configured() -> bool:
+    policy = channel_policy()
+    return bool(
+        str(policy.get("chat_id", "")).startswith("oc_")
+        and str(policy.get("owner_open_id", "")).startswith("ou_")
+        and shutil.which("lark-cli")
+    )
+
+
+def run_lark_listener(
+    stop_event: threading.Event,
+    *,
+    popen: Callable[..., Any] = subprocess.Popen,
+    executable: str = "",
+) -> int:
+    lark = executable or shutil.which("lark-cli") or "lark-cli"
+    environment = os.environ.copy()
+    environment["LARK_CLI_NO_PROXY_WARN"] = "1"
+    process = popen(
+        [
+            lark,
+            "event",
+            "consume",
+            "im.message.receive_v1",
+            "--as",
+            "bot",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+        env=environment,
+    )
+    if process.stdin is None or process.stdout is None or process.stderr is None:
+        raise RuntimeError("Lark event consumer pipes are unavailable")
+
+    ready = False
+    while not stop_event.is_set():
+        line = process.stderr.readline()
+        if not line:
+            break
+        if "[event] ready event_key=im.message.receive_v1" in line:
+            ready = True
+            break
+    if not ready:
+        try:
+            process.stdin.close()
+        except OSError:
+            pass
+        if process.poll() is None:
+            process.terminate()
+        process.wait(timeout=5)
+        raise RuntimeError("Lark event consumer did not emit its ready marker")
+
+    def stop_watcher() -> None:
+        stop_event.wait()
+        try:
+            if not process.stdin.closed:
+                process.stdin.close()
+        except OSError:
+            pass
+
+    watcher = threading.Thread(
+        target=stop_watcher,
+        name="claude-feishu-listener-stop",
+        daemon=True,
+    )
+    watcher.start()
+
+    received = 0
+    try:
+        for line in process.stdout:
+            if stop_event.is_set():
+                break
+            if handle_event_line(line):
+                received += 1
+    finally:
+        try:
+            if not process.stdin.closed:
+                process.stdin.close()
+        except OSError:
+            pass
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            process.wait(timeout=5)
+    return received
+
+
+def listen_forever(stop_event: threading.Event) -> None:
+    while not stop_event.is_set():
+        try:
+            run_lark_listener(stop_event)
+        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            try:
+                append_log("inbound-listener-error", str(error))
+            except OSError:
+                pass
+        if not stop_event.is_set():
+            stop_event.wait(2)
