@@ -216,6 +216,32 @@ class FeishuGatewayCoreTests(unittest.TestCase):
             "hello from Claude", command[command.index("--text") + 1]
         )
 
+    def test_lark_cli_replies_to_source_message_as_bot(self) -> None:
+        pm_feishu.save_lark_channel("oc_test_channel")
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps(
+                {"ok": True, "identity": "bot", "data": {"message_id": "om_reply"}}
+            ),
+            stderr="",
+        )
+        with mock.patch.object(
+            pm_feishu.shutil, "which", return_value="/usr/bin/lark-cli"
+        ):
+            with mock.patch.object(
+                pm_feishu.subprocess, "run", return_value=completed
+            ) as runner:
+                response = pm_feishu.reply_text(
+                    "om_source", "remote result", retries=1
+                )
+
+        self.assertTrue(response["ok"])
+        command = runner.call_args.args[0]
+        self.assertIn("+messages-reply", command)
+        self.assertEqual("om_source", command[command.index("--message-id") + 1])
+        self.assertEqual("remote result", command[command.index("--text") + 1])
+
     def test_invalid_lark_chat_id_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             pm_feishu.save_lark_channel("not-a-chat")

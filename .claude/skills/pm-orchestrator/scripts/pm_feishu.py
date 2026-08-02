@@ -71,12 +71,23 @@ def _atomic_json(path: Path, value: dict[str, Any]) -> None:
 def load_state() -> dict[str, Any]:
     return _read_json(
         runtime_dir() / "state.json",
-        {"enabled": False, "updated_at": None},
+        {"enabled": False, "disable_generation": 0, "updated_at": None},
     )
 
 
 def set_enabled(enabled: bool) -> dict[str, Any]:
-    state = {"enabled": bool(enabled), "updated_at": utc_now()}
+    previous = load_state()
+    try:
+        disable_generation = int(previous.get("disable_generation", 0))
+    except (TypeError, ValueError):
+        disable_generation = 0
+    if not enabled:
+        disable_generation += 1
+    state = {
+        "enabled": bool(enabled),
+        "disable_generation": disable_generation,
+        "updated_at": utc_now(),
+    }
     _atomic_json(runtime_dir() / "state.json", state)
     return state
 
@@ -236,7 +247,13 @@ def append_log(kind: str, message: str, event_id: str = "") -> None:
         stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
 
-def save_lark_channel(chat_id: str, name: str = "Claude PM 总控") -> None:
+def save_lark_channel(
+    chat_id: str,
+    name: str = "Claude PM 总控",
+    *,
+    owner_open_id: str = "",
+    boss_root: str = "/Volumes/SanDisk2TB",
+) -> None:
     if not chat_id.startswith("oc_"):
         raise ValueError("A Feishu chat ID must start with oc_")
     _atomic_json(
@@ -245,6 +262,8 @@ def save_lark_channel(chat_id: str, name: str = "Claude PM 总控") -> None:
             "transport": "lark-cli",
             "chat_id": chat_id,
             "name": name,
+            "owner_open_id": owner_open_id,
+            "boss_root": boss_root,
             "configured_at": utc_now(),
         },
     )
@@ -410,6 +429,51 @@ def send_text(
         retries=retries,
         timeout=timeout,
     )
+
+
+def reply_text(
+    message_id: str, text: str, retries: int = 3, timeout: float = 10
+) -> dict[str, Any]:
+    executable = shutil.which("lark-cli")
+    if not executable or not message_id.startswith("om_"):
+        raise RuntimeError("Lark CLI reply target is not configured")
+    bounded = _text_payload("", text)["content"]["text"]
+    idempotency_key = "reply-" + hashlib.sha256(
+        f"{message_id}\n{bounded}".encode("utf-8")
+    ).hexdigest()[:32]
+    last_error = "unknown delivery error"
+    for attempt in range(retries):
+        try:
+            result = subprocess.run(
+                [
+                    executable,
+                    "im",
+                    "+messages-reply",
+                    "--as",
+                    "bot",
+                    "--message-id",
+                    message_id,
+                    "--text",
+                    bounded,
+                    "--idempotency-key",
+                    idempotency_key,
+                    "--format",
+                    "json",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=max(timeout, 1),
+                check=False,
+            )
+            parsed = json.loads(result.stdout)
+            if result.returncode != 0 or not isinstance(parsed, dict) or not parsed.get("ok"):
+                raise RuntimeError("Lark CLI rejected the reply")
+            return parsed
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+            last_error = type(error).__name__
+            if attempt + 1 < retries:
+                time.sleep(0.2 * (2**attempt))
+    raise RuntimeError(f"Feishu reply failed: {last_error}")
 
 
 def deliver_pending(

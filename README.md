@@ -72,7 +72,13 @@ claude-feishu
 ```
 
 Starting `claude-feishu` turns synchronization on and immediately sends a
-Gateway-online message to Feishu. The console accepts:
+Gateway-online message to Feishu. It also starts a WebSocket listener for
+commands sent by the configured owner in `Claude PM 总控`. Text and post
+messages are acknowledged, executed serially by one persistent remote Claude
+boss session rooted at `/Volumes/SanDisk2TB`, and answered as replies to the
+source message. The remote session inherits the current Claude provider and
+model, uses maximum effort and `bypassPermissions`, and remains independent of
+the visible local terminal. The console accepts:
 
 ```text
 cloud on
@@ -86,11 +92,20 @@ cloud quit
 The same controls are available as `claude-feishu on`, `off`, `status`, `test`,
 and `logs`. In the boss conversation, `我现在外出了` turns synchronization on;
 `我回来了`, `我没外出`, or `没外出` turns it off. The current release is outbound
-only: completed boss replies, failures, and attention notifications are copied
-to Feishu. Replies sent from Feishu are not yet routed back into Claude Code.
-Only one gateway console can run at a time. Pending messages expire after 24
-hours; delivery is at-least-once, so an ambiguous network timeout can
-produce a duplicate rather than silently losing a Claude reply.
+and inbound: completed local boss replies, failures, and attention notifications
+are copied to Feishu, while owner-authored Feishu messages drive the dedicated
+remote boss session. `cloud off` ignores new inbound commands, pauses queued
+work, and cancels the active remote command; `cloud on` resumes with a fresh
+command lifecycle. Messages from bots, other users, or other chats are
+never executed. Only one gateway console can run at a time. Pending outbound
+messages expire after 24 hours; outbound delivery is at-least-once. Durable
+inbound message IDs and an atomic running state provide at-most-once command
+execution. If the gateway stops during a command, that command is marked
+uncertain and is not automatically retried, avoiding repeated high-permission
+side effects. A completed command whose Feishu reply failed keeps its result and
+retries only the reply. `claude-feishu status` reports `Duplex ready` only while
+the event WebSocket is live; configured but disconnected gateways report
+`Duplex offline`.
 
 For image understanding, use `/imageinput /path/to/image.png Analyze this page`. Set `OPENROUTER_API_KEY` locally; the current coding model remains unchanged and only the image helper uses OpenRouter.
 
