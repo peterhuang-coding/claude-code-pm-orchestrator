@@ -71,12 +71,23 @@ def _atomic_json(path: Path, value: dict[str, Any]) -> None:
 def load_state() -> dict[str, Any]:
     return _read_json(
         runtime_dir() / "state.json",
-        {"enabled": False, "updated_at": None},
+        {"enabled": False, "disable_generation": 0, "updated_at": None},
     )
 
 
 def set_enabled(enabled: bool) -> dict[str, Any]:
-    state = {"enabled": bool(enabled), "updated_at": utc_now()}
+    previous = load_state()
+    try:
+        disable_generation = int(previous.get("disable_generation", 0))
+    except (TypeError, ValueError):
+        disable_generation = 0
+    if not enabled:
+        disable_generation += 1
+    state = {
+        "enabled": bool(enabled),
+        "disable_generation": disable_generation,
+        "updated_at": utc_now(),
+    }
     _atomic_json(runtime_dir() / "state.json", state)
     return state
 

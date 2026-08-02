@@ -244,7 +244,9 @@ class RemoteClaudeSessionTests(unittest.TestCase):
         runner = mock.Mock(return_value=process)
         errors = []
 
-        with mock.patch.object(inbound.os, "killpg") as killpg:
+        with mock.patch.object(inbound.os, "killpg") as killpg, mock.patch.object(
+            inbound, "_process_group_exists", return_value=False
+        ):
             thread = threading.Thread(
                 target=lambda: self._capture_remote_error(
                     errors, stop_event, runner
@@ -270,6 +272,51 @@ class RemoteClaudeSessionTests(unittest.TestCase):
             )
 
         started.assert_called_once_with(4321, "born")
+
+    def test_identity_persistence_failure_terminates_new_process_group(self) -> None:
+        process = mock.Mock(returncode=None, pid=4321)
+        process.wait.return_value = 0
+
+        with mock.patch.object(
+            inbound, "_process_identity", side_effect=OSError("ps failed")
+        ), mock.patch.object(
+            inbound.os,
+            "killpg",
+            side_effect=[None, ProcessLookupError()],
+        ) as killpg:
+            with self.assertRaisesRegex(RuntimeError, "supervision"):
+                inbound.execute_remote_command(
+                    "run",
+                    runner=mock.Mock(return_value=process),
+                    on_started=mock.Mock(),
+                )
+
+        self.assertEqual((4321, signal.SIGTERM), killpg.call_args_list[0].args)
+
+    def test_cancellation_kills_descendants_after_group_leader_exits(self) -> None:
+        process = mock.Mock(returncode=None, pid=4321)
+        process.wait.return_value = 0
+
+        with mock.patch.object(inbound, "PROCESS_STOP_TIMEOUT", 0), mock.patch.object(
+            inbound.os, "killpg"
+        ) as killpg:
+            inbound._terminate_process_group(process)
+
+        self.assertIn(mock.call(4321, signal.SIGTERM), killpg.call_args_list)
+        self.assertIn(mock.call(4321, signal.SIGKILL), killpg.call_args_list)
+
+    def test_recovery_kills_group_when_leader_exited_but_descendants_remain(self) -> None:
+        record = {"process_group_id": 4321, "process_identity": "born"}
+
+        with mock.patch.object(inbound, "PROCESS_STOP_TIMEOUT", 0), mock.patch.object(
+            inbound, "_process_identity", return_value=""
+        ), mock.patch.object(
+            inbound, "_process_group_exists", return_value=True
+        ), mock.patch.object(inbound.os, "killpg") as killpg:
+            self.assertTrue(inbound.terminate_recorded_process(record))
+
+        self.assertIn(mock.call(4321, signal.SIGTERM), killpg.call_args_list)
+        self.assertIn(mock.call(4321, signal.SIGKILL), killpg.call_args_list)
 
     @staticmethod
     def _capture_remote_error(errors, stop_event, runner) -> None:
@@ -455,6 +502,16 @@ class GatewayCancellationTests(unittest.TestCase):
         active = controller.begin()
 
         pm_feishu.set_enabled(False)
+
+        self.assertTrue(active.is_set())
+
+    def test_rapid_external_off_then_on_still_cancels_active_command(self) -> None:
+        pm_feishu.set_enabled(True)
+        controller = gateway_cli.ActiveCommandCancellation()
+        active = controller.begin()
+
+        pm_feishu.set_enabled(False)
+        pm_feishu.set_enabled(True)
 
         self.assertTrue(active.is_set())
 

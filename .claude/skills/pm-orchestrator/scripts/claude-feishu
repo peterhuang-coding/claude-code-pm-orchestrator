@@ -37,8 +37,20 @@ from pm_feishu_inbound import (
 
 
 class GatewayCommandStop(threading.Event):
+    def __init__(self) -> None:
+        super().__init__()
+        self._disable_generation = int(
+            load_state().get("disable_generation", 0)
+        )
+
     def is_set(self) -> bool:
-        return super().is_set() or not bool(load_state().get("enabled"))
+        state = load_state()
+        return bool(
+            super().is_set()
+            or not state.get("enabled")
+            or int(state.get("disable_generation", 0))
+            != self._disable_generation
+        )
 
 
 class ActiveCommandCancellation:

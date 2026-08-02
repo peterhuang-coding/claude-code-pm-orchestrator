@@ -28,6 +28,7 @@ from pm_feishu import (
 ALLOWED_MESSAGE_TYPES = {"text", "post"}
 REMOTE_SESSION_FILE = "remote-session.json"
 LISTENER_STATE_FILE = "listener-state.json"
+PROCESS_STOP_TIMEOUT = 5.0
 
 
 class RemoteCommandCancelled(RuntimeError):
@@ -166,23 +167,50 @@ def _process_identity(pid: int) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+def _process_group_exists(process_group_id: int) -> bool:
+    try:
+        os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _wait_for_process_group_exit(process_group_id: int) -> bool:
+    deadline = time.monotonic() + PROCESS_STOP_TIMEOUT
+    while time.monotonic() < deadline:
+        if not _process_group_exists(process_group_id):
+            return True
+        time.sleep(0.05)
+    return not _process_group_exists(process_group_id)
+
+
 def _terminate_process_group(process: Any) -> None:
     if process.returncode is not None:
         return
+    process_group_id = int(process.pid)
     try:
-        os.killpg(int(process.pid), signal.SIGTERM)
+        os.killpg(process_group_id, signal.SIGTERM)
     except ProcessLookupError:
         return
     except (OSError, ValueError):
         process.terminate()
     try:
-        process.wait(timeout=5)
+        process.wait(timeout=min(1.0, PROCESS_STOP_TIMEOUT))
     except subprocess.TimeoutExpired:
+        pass
+    if not _wait_for_process_group_exit(process_group_id):
         try:
-            os.killpg(int(process.pid), signal.SIGKILL)
+            os.killpg(process_group_id, signal.SIGKILL)
         except ProcessLookupError:
             pass
         except (OSError, ValueError):
+            process.kill()
+    if process.returncode is None:
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
             process.kill()
         process.wait(timeout=5)
 
@@ -196,23 +224,21 @@ def terminate_recorded_process(record: dict[str, Any]) -> bool:
     expected_identity = str(record.get("process_identity", ""))
     if process_group_id <= 0 or not expected_identity:
         return False
-    if _process_identity(process_group_id) != expected_identity:
+    current_identity = _process_identity(process_group_id)
+    if current_identity:
+        if current_identity != expected_identity:
+            return False
+    elif not _process_group_exists(process_group_id):
         return False
     try:
         os.killpg(process_group_id, signal.SIGTERM)
     except ProcessLookupError:
         return False
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
+    if not _wait_for_process_group_exit(process_group_id):
         try:
-            os.killpg(process_group_id, 0)
+            os.killpg(process_group_id, signal.SIGKILL)
         except ProcessLookupError:
-            return True
-        time.sleep(0.05)
-    try:
-        os.killpg(process_group_id, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+            pass
     return True
 
 
@@ -272,7 +298,16 @@ def execute_remote_command(
         start_new_session=True,
     )
     if on_started is not None:
-        on_started(int(process.pid), _process_identity(int(process.pid)))
+        try:
+            identity = _process_identity(int(process.pid))
+            if not identity:
+                raise RuntimeError("process identity is unavailable")
+            on_started(int(process.pid), identity)
+        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            _terminate_process_group(process)
+            raise RuntimeError(
+                "Claude process supervision could not be persisted"
+            ) from error
     stopper = stop_event or threading.Event()
     stdout = ""
     stderr = ""
