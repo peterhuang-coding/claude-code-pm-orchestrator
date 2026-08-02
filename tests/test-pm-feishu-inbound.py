@@ -451,6 +451,17 @@ class LarkEventListenerTests(unittest.TestCase):
         self.assertEqual(len(stderr), process.stderr.tell())
         self.assertEqual("offline", inbound.listener_runtime_status())
 
+    def test_listener_spawn_failure_clears_stale_ready_status(self) -> None:
+        inbound._set_listener_runtime("ready")
+
+        with self.assertRaisesRegex(OSError, "spawn failed"):
+            inbound.run_lark_listener(
+                threading.Event(),
+                popen=mock.Mock(side_effect=OSError("spawn failed")),
+            )
+
+        self.assertEqual("offline", inbound.listener_runtime_status())
+
     def test_cloud_off_ignores_new_event_lines(self) -> None:
         pm_feishu.set_enabled(False)
         self.assertFalse(

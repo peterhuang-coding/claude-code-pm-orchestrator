@@ -409,29 +409,32 @@ def run_lark_listener(
     lark = executable or shutil.which("lark-cli") or "lark-cli"
     environment = os.environ.copy()
     environment["LARK_CLI_NO_PROXY_WARN"] = "1"
-    process = popen(
-        [
-            lark,
-            "event",
-            "consume",
-            "im.message.receive_v1",
-            "--as",
-            "bot",
-        ],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-        env=environment,
-    )
+    _set_listener_runtime("starting")
+    try:
+        process = popen(
+            [
+                lark,
+                "event",
+                "consume",
+                "im.message.receive_v1",
+                "--as",
+                "bot",
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            env=environment,
+        )
+    except (OSError, subprocess.SubprocessError):
+        _set_listener_runtime("offline", "consumer spawn failed")
+        raise
     if process.stdin is None or process.stdout is None or process.stderr is None:
         raise RuntimeError("Lark event consumer pipes are unavailable")
 
     ready_event = threading.Event()
     stderr_done = threading.Event()
-    _set_listener_runtime("starting")
-
     def drain_stderr() -> None:
         try:
             for line in process.stderr:
