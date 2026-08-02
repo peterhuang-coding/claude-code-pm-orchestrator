@@ -97,8 +97,14 @@ are copied to Feishu, while owner-authored Feishu messages drive the dedicated
 remote boss session. `cloud off` ignores new inbound commands and pauses queued
 work; `cloud on` resumes it. Messages from bots, other users, or other chats are
 never executed. Only one gateway console can run at a time. Pending outbound
-messages expire after 24 hours; delivery is at-least-once, while durable inbound
-message IDs prevent duplicate command execution.
+messages expire after 24 hours; outbound delivery is at-least-once. Durable
+inbound message IDs and an atomic running state provide at-most-once command
+execution. If the gateway stops during a command, that command is marked
+uncertain and is not automatically retried, avoiding repeated high-permission
+side effects. A completed command whose Feishu reply failed keeps its result and
+retries only the reply. `claude-feishu status` reports `Duplex ready` only while
+the event WebSocket is live; configured but disconnected gateways report
+`Duplex offline`.
 
 For image understanding, use `/imageinput /path/to/image.png Analyze this page`. Set `OPENROUTER_API_KEY` locally; the current coding model remains unchanged and only the image helper uses OpenRouter.
 

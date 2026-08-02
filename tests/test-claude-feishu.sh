@@ -24,10 +24,24 @@ if [ "${1-}" = auth ] && [ "${2-}" = status ]; then
 fi
 if [ "${1-}" = event ]; then
   echo '[event] ready event_key=im.message.receive_v1' >&2
+  if [ -n "${PM_FAKE_LARK_EVENT-}" ]; then
+    printf '%s\n' "$PM_FAKE_LARK_EVENT"
+  fi
   while IFS= read -r _line; do :; done
+fi
+if [ "${1-}" = im ] && [ "${2-}" = +messages-reply ]; then
+  printf '%s\n' "$*" >> "$PM_FAKE_LARK_REPLIES"
+  printf '%s\n' '{"ok":true,"data":{"message_id":"om_fake_reply"}}'
+  exit 0
 fi
 SH
 chmod +x "$SANDBOX/bin/lark-cli"
+cat > "$SANDBOX/bin/claude" <<'SH'
+#!/bin/sh
+printf '%s\n' "$*" >> "$PM_FAKE_CLAUDE_CALLS"
+printf '%s\n' '{"type":"result","result":"远程 Claude 已执行。"}'
+SH
+chmod +x "$SANDBOX/bin/claude"
 PATH="$SANDBOX/bin:$PATH"
 export PATH
 
@@ -139,6 +153,25 @@ PY
 printf 'cloud quit\n' | feishu >/dev/null
 grep -Fq '老板回复已经完成' "$SANDBOX/requests.jsonl" ||
   fail "queued boss response was not delivered"
+
+EVENT='{"type":"im.message.receive_v1","chat_id":"oc_test_chat","chat_type":"group","message_id":"om_duplex_e2e","message_type":"text","sender_id":"ou_test_owner","sender_type":"user","content":"汇报三个项目","create_time":"1785680000000"}'
+(sleep 1; printf 'cloud quit\n') | \
+  PM_HUB_HOME="$SANDBOX/hub" \
+  PM_FEISHU_TEST_WEBHOOK="$WEBHOOK" \
+  PM_FAKE_LARK_EVENT="$EVENT" \
+  PM_FAKE_LARK_REPLIES="$SANDBOX/replies.log" \
+  PM_FAKE_CLAUDE_CALLS="$SANDBOX/claude.log" \
+  NO_PROXY="127.0.0.1,localhost" \
+  no_proxy="127.0.0.1,localhost" \
+  "$CLI" > "$SANDBOX/duplex.out"
+grep -Fq '汇报三个项目' "$SANDBOX/claude.log" ||
+  fail "inbound owner command did not reach Claude"
+grep -Fq '已收到' "$SANDBOX/replies.log" ||
+  fail "inbound command was not acknowledged"
+grep -Fq '远程 Claude 已执行' "$SANDBOX/replies.log" ||
+  fail "Claude result was not replied to the source Feishu message"
+find "$SANDBOX/hub/runtime/feishu/inbound/processed" -name 'om_duplex_e2e.json' \
+  -print -quit | grep -q . || fail "inbound command was not durably completed"
 
 feishu off >/dev/null
 echo "PASS: Claude Feishu CLI and fake webhook"
