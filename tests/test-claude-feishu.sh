@@ -155,7 +155,12 @@ grep -Fq '老板回复已经完成' "$SANDBOX/requests.jsonl" ||
   fail "queued boss response was not delivered"
 
 EVENT='{"type":"im.message.receive_v1","chat_id":"oc_test_chat","chat_type":"group","message_id":"om_duplex_e2e","message_type":"text","sender_id":"ou_test_owner","sender_type":"user","content":"汇报三个项目","create_time":"1785680000000"}'
-(sleep 1; printf 'cloud quit\n') | \
+(for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+   [ ! -s "$SANDBOX/claude.log" ] || break
+   sleep 0.2
+ done
+ sleep 0.2
+ printf 'cloud quit\n') | \
   PM_HUB_HOME="$SANDBOX/hub" \
   PM_FEISHU_TEST_WEBHOOK="$WEBHOOK" \
   PM_FAKE_LARK_EVENT="$EVENT" \
