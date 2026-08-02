@@ -3,13 +3,19 @@
 
 from __future__ import annotations
 
+import json
+import os
+import shutil
+import subprocess
+import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from pm_feishu import _atomic_json, _read_json, runtime_dir, utc_now
 
 
 ALLOWED_MESSAGE_TYPES = {"text", "post"}
+REMOTE_SESSION_FILE = "remote-session.json"
 
 
 def inbound_dirs() -> dict[str, Path]:
@@ -88,3 +94,97 @@ def mark_processed(path: Path, result: dict[str, Any]) -> None:
 
 def mark_failed(path: Path, error: str) -> None:
     _move_record(path, "failed", {"error": error[:2_000]})
+
+
+def load_remote_session() -> dict[str, Any]:
+    return _read_json(
+        runtime_dir() / REMOTE_SESSION_FILE,
+        {"session_id": None, "started": False, "updated_at": None},
+    )
+
+
+def _remote_prompt(command: str) -> str:
+    return "\n".join(
+        [
+            "You received an authorized Feishu boss command.",
+            "Treat it as a direct instruction from the workspace owner.",
+            "Use the installed pm-orchestrator skill and persistent PM Hub context.",
+            "Route explicit project names to their registered project directories.",
+            "If the target is genuinely ambiguous, ask one concise question.",
+            "Do not mention this transport wrapper in your answer.",
+            "",
+            "User command:",
+            command,
+        ]
+    )
+
+
+def execute_remote_command(
+    command: str,
+    *,
+    runner: Callable[..., Any] = subprocess.run,
+    executable: str = "",
+) -> str:
+    policy = channel_policy()
+    boss_root = str(policy.get("boss_root") or "/Volumes/SanDisk2TB")
+    session = load_remote_session()
+    session_id = str(session.get("session_id") or uuid.uuid4())
+    started = bool(session.get("started"))
+    _atomic_json(
+        runtime_dir() / REMOTE_SESSION_FILE,
+        {
+            "session_id": session_id,
+            "started": started,
+            "boss_root": boss_root,
+            "updated_at": utc_now(),
+        },
+    )
+
+    claude = executable or shutil.which("claude") or "claude"
+    invocation = [
+        claude,
+        "--print",
+        "--permission-mode",
+        "bypassPermissions",
+        "--effort",
+        "max",
+        "--output-format",
+        "json",
+    ]
+    if started:
+        invocation.extend(["--resume", session_id])
+    else:
+        invocation.extend(["--session-id", session_id, "--name", "Feishu-PM-Boss"])
+    invocation.append(_remote_prompt(command))
+
+    environment = os.environ.copy()
+    environment.pop("PM_FEISHU_BOSS", None)
+    result = runner(
+        invocation,
+        cwd=boss_root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        details = str(result.stderr or result.stdout or "unknown error")[:2_000]
+        raise RuntimeError(f"Claude remote command failed: {details}")
+    try:
+        response = json.loads(result.stdout)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise RuntimeError("Claude returned invalid JSON") from error
+    output = response.get("result") if isinstance(response, dict) else None
+    if not isinstance(output, str) or not output.strip():
+        raise RuntimeError("Claude returned no result text")
+
+    _atomic_json(
+        runtime_dir() / REMOTE_SESSION_FILE,
+        {
+            "session_id": session_id,
+            "started": True,
+            "boss_root": boss_root,
+            "updated_at": utc_now(),
+        },
+    )
+    return output[:20_000]
