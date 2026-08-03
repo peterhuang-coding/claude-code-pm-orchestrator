@@ -23,6 +23,9 @@ def process(event: dict[str, Any]) -> None:
             bind_boss(
                 str(event.get("session_id", "")),
                 str(event.get("cwd", "")),
+                launch_token=os.environ.get(
+                    "PM_FEISHU_BOSS_LAUNCH_TOKEN", ""
+                ),
             )
         return
     if event_name == "UserPromptSubmit":

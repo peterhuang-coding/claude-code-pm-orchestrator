@@ -29,6 +29,7 @@ set -eu
 {
   printf 'PWD=%s\n' "$PWD"
   printf 'PM_FEISHU_BOSS=%s\n' "${PM_FEISHU_BOSS-<unset>}"
+  printf 'PM_FEISHU_BOSS_LAUNCH_TOKEN=%s\n' "${PM_FEISHU_BOSS_LAUNCH_TOKEN-<unset>}"
   printf 'ARGS='
   printf '<%s>' "$@"
   printf '\n'
@@ -52,6 +53,7 @@ grep -Fq '<--permission-mode><bypassPermissions>' "$OUT" || fail "YOLO launch om
 grep -Fq '<--effort><max>' "$OUT" || fail "YOLO launch omitted max effort"
 grep -Fq '<--teammate-mode><in-process>' "$OUT" || fail "YOLO launch omitted Agent Team mode"
 grep -Fxq 'PM_FEISHU_BOSS=<unset>' "$OUT" || fail "ordinary launch inherited boss authority"
+grep -Fxq 'PM_FEISHU_BOSS_LAUNCH_TOKEN=<unset>' "$OUT" || fail "ordinary launch inherited boss token"
 
 HOME="$HOME_DIR" PM_HUB_HOME="$HUB" \
   "$HOME_DIR/.claude/skills/pm-orchestrator/scripts/pm-hub.sh" register "$PROJECT" sample >/dev/null
@@ -98,6 +100,8 @@ CLAUDE_YOLO_TEST_OUT="$OUT" \
 "$YOLO" boss --name boss-start
 grep -Fxq "PWD=$SANDBOX" "$OUT" || fail "boss mode did not use the configured disk root"
 grep -Fxq 'PM_FEISHU_BOSS=1' "$OUT" || fail "boss mode did not mark the Feishu-facing session"
+grep -Eq '^PM_FEISHU_BOSS_LAUNCH_TOKEN=[0-9a-f-]{36}$' "$OUT" ||
+  fail "boss mode did not create a unique launch token"
 grep -Fq '<--name><boss-start>' "$OUT" || fail "boss mode lost Claude arguments"
 
 echo "PASS: Claude YOLO entrypoint"

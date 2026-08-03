@@ -95,21 +95,37 @@ def set_enabled(enabled: bool) -> dict[str, Any]:
 def load_boss() -> dict[str, Any]:
     return _read_json(
         runtime_dir() / "boss.json",
-        {"session_id": None, "cwd": None, "bound_at": None},
-    )
-
-
-def bind_boss(session_id: str, cwd: str) -> None:
-    if not session_id:
-        return
-    _atomic_json(
-        runtime_dir() / "boss.json",
         {
-            "session_id": session_id,
-            "cwd": cwd,
-            "bound_at": utc_now(),
+            "session_id": None,
+            "cwd": None,
+            "launch_token": None,
+            "bound_at": None,
         },
     )
+
+
+def bind_boss(session_id: str, cwd: str, *, launch_token: str = "") -> bool:
+    if not session_id:
+        return False
+    with (runtime_dir() / "boss-claim.lock").open("a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        current = load_boss()
+        if (
+            launch_token
+            and current.get("launch_token") == launch_token
+            and current.get("session_id")
+        ):
+            return current.get("session_id") == session_id
+        _atomic_json(
+            runtime_dir() / "boss.json",
+            {
+                "session_id": session_id,
+                "cwd": cwd,
+                "launch_token": launch_token or None,
+                "bound_at": utc_now(),
+            },
+        )
+    return True
 
 
 def is_active_boss(session_id: str) -> bool:
