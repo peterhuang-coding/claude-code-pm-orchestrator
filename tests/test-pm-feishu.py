@@ -274,13 +274,20 @@ class FeishuGatewayCoreTests(unittest.TestCase):
             pm_feishu.acquire_gateway_lock()
 
     def run_hook(
-        self, event: dict[str, object], *, boss: bool = False
+        self,
+        event: dict[str, object],
+        *,
+        boss: bool = False,
+        launch_token: str = "",
     ) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         if boss:
             env["PM_FEISHU_BOSS"] = "1"
+            if launch_token:
+                env["PM_FEISHU_BOSS_LAUNCH_TOKEN"] = launch_token
         else:
             env.pop("PM_FEISHU_BOSS", None)
+            env.pop("PM_FEISHU_BOSS_LAUNCH_TOKEN", None)
         return subprocess.run(
             [sys.executable, str(SCRIPTS / "pm-feishu-hook.py")],
             input=json.dumps(event, ensure_ascii=False),
@@ -347,6 +354,48 @@ class FeishuGatewayCoreTests(unittest.TestCase):
         )
         self.assertEqual(0, disabled.returncode)
         self.assertFalse(pm_feishu.load_state()["enabled"])
+
+    def test_same_boss_launch_token_cannot_be_hijacked_by_later_session(self) -> None:
+        first = self.run_hook(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "visible-main",
+                "cwd": "/Volumes/SanDisk2TB",
+            },
+            boss=True,
+            launch_token="launch-a",
+        )
+        later = self.run_hook(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "background-worker",
+                "cwd": "/Volumes/SanDisk2TB/project",
+            },
+            boss=True,
+            launch_token="launch-a",
+        )
+
+        self.assertEqual(0, first.returncode)
+        self.assertEqual(0, later.returncode)
+        self.assertEqual("visible-main", pm_feishu.load_boss()["session_id"])
+        self.assertEqual("launch-a", pm_feishu.load_boss()["launch_token"])
+
+    def test_new_boss_launch_token_replaces_previous_visible_session(self) -> None:
+        pm_feishu.bind_boss(
+            "old-visible", "/Volumes/SanDisk2TB", launch_token="launch-old"
+        )
+
+        self.run_hook(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "new-visible",
+                "cwd": "/Volumes/SanDisk2TB",
+            },
+            boss=True,
+            launch_token="launch-new",
+        )
+
+        self.assertEqual("new-visible", pm_feishu.load_boss()["session_id"])
 
     def test_ordinary_session_cannot_toggle_away_mode(self) -> None:
         pm_feishu.bind_boss("boss-4", "/Volumes/SanDisk2TB")

@@ -16,6 +16,7 @@ HUB_TOOL="$SCRIPT_DIR/pm-hub.sh"
 CONFIGURATOR="$SCRIPT_DIR/configure-claude-user.py"
 
 unset PM_FEISHU_BOSS
+unset PM_FEISHU_BOSS_LAUNCH_TOKEN
 
 [ -x "$INSTALLER" ] || {
   echo "claude-yolo: PM Orchestrator source is unavailable: $INSTALLER" >&2
@@ -50,6 +51,8 @@ if [ "$#" -gt 0 ] && [ "$1" = boss ]; then
     exit 1
   }
   export PM_FEISHU_BOSS=1
+  PM_FEISHU_BOSS_LAUNCH_TOKEN=$(python3 -c 'import uuid; print(uuid.uuid4())')
+  export PM_FEISHU_BOSS_LAUNCH_TOKEN
 elif [ "$#" -gt 0 ] && [ "$1" = hub ]; then
   TARGET=$HUB
   shift
