@@ -14,9 +14,15 @@ from typing import Any, Optional
 
 
 def command_hook(
-    script: Path, *, async_hook: bool = False, timeout: Optional[int] = None
+    script: Path,
+    *,
+    async_hook: bool = False,
+    timeout: Optional[int] = None,
+    fail_open: bool = False,
 ) -> dict[str, Any]:
     command = f"python3 {shlex.quote(str(script.resolve()))}"
+    if fail_open:
+        command += " || true"
     hook: dict[str, Any] = {"type": "command", "command": command}
     if async_hook:
         hook["async"] = True
@@ -33,6 +39,7 @@ def replace_managed_hook(
     *,
     async_hook: bool = False,
     timeout: Optional[int] = None,
+    fail_open: bool = False,
 ) -> None:
     groups = hooks.get(event, [])
     retained = []
@@ -46,9 +53,26 @@ def replace_managed_hook(
             continue
         retained.append(group)
     retained.append(
-        command_hook(script, async_hook=async_hook, timeout=timeout)
+        command_hook(
+            script,
+            async_hook=async_hook,
+            timeout=timeout,
+            fail_open=fail_open,
+        )
     )
     hooks[event] = retained
+
+
+def managed_scripts_dir(settings_path: Path) -> Path:
+    installed = settings_path.parent / "skills" / "pm-orchestrator" / "scripts"
+    required = (
+        "pm-session-start.py",
+        "pm-feishu-hook.py",
+        "pm-team-event.py",
+    )
+    if all((installed / name).is_file() for name in required):
+        return installed
+    return Path(__file__).resolve().parent
 
 
 def main() -> int:
@@ -75,7 +99,7 @@ def main() -> int:
         settings["teammateMode"] = "in-process"
         settings["skipDangerousModePermissionPrompt"] = True
 
-        scripts = Path(__file__).resolve().parent
+        scripts = managed_scripts_dir(settings_path)
         hooks = settings.setdefault("hooks", {})
         replace_managed_hook(
             hooks, "SessionStart", "pm-session-start.py", scripts / "pm-session-start.py"
@@ -94,6 +118,7 @@ def main() -> int:
                 scripts / "pm-feishu-hook.py",
                 async_hook=event not in ("SessionStart", "UserPromptSubmit"),
                 timeout=2 if event in ("SessionStart", "UserPromptSubmit") else 5,
+                fail_open=True,
             )
         for event in ("TeammateIdle", "TaskCompleted"):
             replace_managed_hook(

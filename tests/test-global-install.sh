@@ -34,11 +34,11 @@ cmp -s "$SANDBOX/settings.before" "$TARGET/settings.json" || fail "installer cha
 [ -x "$TARGET/skills/pm-orchestrator/scripts/claude-yolo" ] || fail "Claude YOLO entrypoint was not installed"
 [ -x "$TARGET/bin/claude-pm" ] || fail "short Claude PM entrypoint was not installed"
 [ -x "$TARGET/bin/claude-yolo" ] || fail "short Claude YOLO entrypoint was not installed"
-SOURCE_YOLO=$(CDPATH= cd -- "$SCRIPT_DIR/../.claude/skills/pm-orchestrator/scripts" && pwd -P)/claude-yolo
-[ "$(readlink "$TARGET/bin/claude-yolo")" = "$SOURCE_YOLO" ] || fail "Claude YOLO entrypoint does not point to source package"
+INSTALLED_YOLO="$TARGET/skills/pm-orchestrator/scripts/claude-yolo"
+[ "$(readlink "$TARGET/bin/claude-yolo")" = "$INSTALLED_YOLO" ] || fail "Claude YOLO entrypoint does not point to installed package"
 [ -x "$TARGET/bin/claude-feishu" ] || fail "Claude Feishu entrypoint was not installed"
-SOURCE_FEISHU=$(CDPATH= cd -- "$SCRIPT_DIR/../.claude/skills/pm-orchestrator/scripts" && pwd -P)/claude-feishu
-[ "$(readlink "$TARGET/bin/claude-feishu")" = "$SOURCE_FEISHU" ] || fail "Claude Feishu entrypoint does not point to source package"
+INSTALLED_FEISHU="$TARGET/skills/pm-orchestrator/scripts/claude-feishu"
+[ "$(readlink "$TARGET/bin/claude-feishu")" = "$INSTALLED_FEISHU" ] || fail "Claude Feishu entrypoint does not point to installed package"
 [ -x "$GLOBAL_BIN/claude-yolo" ] || fail "shell-visible Claude YOLO entrypoint was not installed"
 [ -x "$GLOBAL_BIN/claude-feishu" ] || fail "shell-visible Claude Feishu entrypoint was not installed"
 [ -x "$TARGET/skills/pm-orchestrator/scripts/pm-feishu-hook.py" ] || fail "Feishu hook was not installed"

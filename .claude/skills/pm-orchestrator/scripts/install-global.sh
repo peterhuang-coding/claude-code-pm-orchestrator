@@ -37,8 +37,8 @@ chmod +x "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/claude-feishu"
 chmod +x "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/pm-feishu-hook.py"
 mkdir -p "$TARGET_CLAUDE/bin"
 ln -sf "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/claude-pm" "$TARGET_CLAUDE/bin/claude-pm"
-ln -sf "$SOURCE_CLAUDE/skills/pm-orchestrator/scripts/claude-yolo" "$TARGET_CLAUDE/bin/claude-yolo"
-ln -sf "$SOURCE_CLAUDE/skills/pm-orchestrator/scripts/claude-feishu" "$TARGET_CLAUDE/bin/claude-feishu"
+ln -sf "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/claude-yolo" "$TARGET_CLAUDE/bin/claude-yolo"
+ln -sf "$TARGET_CLAUDE/skills/pm-orchestrator/scripts/claude-feishu" "$TARGET_CLAUDE/bin/claude-feishu"
 
 GLOBAL_BIN=${PM_GLOBAL_BIN:-}
 if [ -z "$GLOBAL_BIN" ]; then

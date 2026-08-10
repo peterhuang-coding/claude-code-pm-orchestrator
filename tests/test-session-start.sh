@@ -123,4 +123,36 @@ defaults = json.loads(Path(sys.argv[3]).read_text())
 assert defaults["env"]["CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY"] == "12"
 PY
 
+INSTALLED_HOME="$SANDBOX/installed-claude"
+INSTALLED_SETTINGS="$INSTALLED_HOME/settings.json"
+INSTALLED_SCRIPTS="$INSTALLED_HOME/skills/pm-orchestrator/scripts"
+mkdir -p "$INSTALLED_SCRIPTS"
+cp "$HOOK" "$INSTALLED_SCRIPTS/pm-session-start.py"
+cp "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-feishu-hook.py" "$INSTALLED_SCRIPTS/pm-feishu-hook.py"
+cp "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-team-event.py" "$INSTALLED_SCRIPTS/pm-team-event.py"
+printf '{}\n' > "$INSTALLED_SETTINGS"
+PM_CLAUDE_SETTINGS="$INSTALLED_SETTINGS" python3 "$CONFIGURE"
+python3 - "$INSTALLED_SETTINGS" "$INSTALLED_SCRIPTS" <<'PY' || fail "configurator did not prefer the installed package"
+import json
+import sys
+from pathlib import Path
+
+settings = json.loads(Path(sys.argv[1]).read_text())
+scripts = str(Path(sys.argv[2]).resolve())
+for groups in settings["hooks"].values():
+    for group in groups:
+        for hook in group.get("hooks", []):
+            command = hook.get("command", "")
+            if "pm-" in command and scripts not in command:
+                raise SystemExit(f"hook escaped installed package: {command}")
+for event in ("SessionStart", "UserPromptSubmit", "Stop", "StopFailure", "Notification"):
+    commands = [
+        hook.get("command", "")
+        for group in settings["hooks"][event]
+        for hook in group.get("hooks", [])
+        if "pm-feishu-hook.py" in hook.get("command", "")
+    ]
+    assert len(commands) == 1 and commands[0].endswith(" || true"), (event, commands)
+PY
+
 echo "PASS: SessionStart cold start and user config"
