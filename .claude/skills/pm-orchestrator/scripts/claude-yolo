@@ -14,10 +14,11 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$SCRIPT")" && pwd -P)
 INSTALLER="$SCRIPT_DIR/install-global.sh"
 HUB_TOOL="$SCRIPT_DIR/pm-hub.sh"
 CONFIGURATOR="$SCRIPT_DIR/configure-claude-user.py"
+CAPABILITIES_TOOL=${PM_MINIMAX_CAPABILITIES_TOOL:-"$SCRIPT_DIR/install-minimax-capabilities.sh"}
+PROVIDER_TOOL=${PM_PROVIDER_TOOL:-"$SCRIPT_DIR/pm-provider.py"}
 
 unset PM_FEISHU_BOSS
 unset PM_FEISHU_BOSS_LAUNCH_TOKEN
-export PM_PROVIDER_ROUTING=1
 
 [ -x "$INSTALLER" ] || {
   echo "claude-yolo: PM Orchestrator source is unavailable: $INSTALLER" >&2
@@ -25,10 +26,28 @@ export PM_PROVIDER_ROUTING=1
 }
 
 "$INSTALLER" >/dev/null
+if [ "$#" -gt 0 ] && [ "$1" = capabilities ]; then
+  shift
+  exec "$CAPABILITIES_TOOL" "$@"
+fi
+if [ -x "$CAPABILITIES_TOOL" ] && ! "$CAPABILITIES_TOOL" status >/dev/null 2>&1; then
+  echo "claude-yolo: MiniMax multimodal capabilities are not fully configured." >&2
+  echo "Run: claude-yolo capabilities install" >&2
+fi
 python3 "$CONFIGURATOR"
 
-if [ "$#" -gt 0 ] && [ "$1" = board ]; then
+if [ "$#" -gt 0 ] && [ "$1" = provider ]; then
   shift
+  exec "$PROVIDER_TOOL" "$@"
+elif [ "$#" -gt 0 ] && [ "$1" = board ]; then
+  shift
+  if [ -x "$PROVIDER_TOOL" ] &&
+    "$PROVIDER_TOOL" status --json 2>/dev/null |
+      python3 -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("active") is True else 1)'
+  then
+    exec "$PROVIDER_TOOL" exec \
+      claude agents --permission-mode bypassPermissions "$@"
+  fi
   exec claude agents --permission-mode bypassPermissions "$@"
 elif [ "$#" -gt 0 ] && [ "$1" = respawn ]; then
   shift

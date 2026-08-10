@@ -20,6 +20,8 @@ PROJECT="$SANDBOX/project"
 UNKNOWN="$SANDBOX/unknown"
 BIN="$SANDBOX/bin"
 OUT="$SANDBOX/claude.out"
+CAPABILITIES_OUT="$SANDBOX/capabilities.out"
+PROVIDER_OUT="$SANDBOX/provider.out"
 mkdir -p "$HOME_DIR" "$PROJECT" "$UNKNOWN" "$BIN"
 export PM_GLOBAL_BIN="$BIN"
 
@@ -37,6 +39,25 @@ set -eu
 EOF
 chmod +x "$BIN/claude"
 
+cat > "$BIN/minimax-capabilities" <<'EOF'
+#!/bin/sh
+printf '<%s>\n' "$*" >>"${CLAUDE_YOLO_CAPABILITIES_OUT:?}"
+EOF
+chmod +x "$BIN/minimax-capabilities"
+export PM_MINIMAX_CAPABILITIES_TOOL="$BIN/minimax-capabilities"
+export CLAUDE_YOLO_CAPABILITIES_OUT="$CAPABILITIES_OUT"
+
+cat > "$BIN/pm-provider" <<'EOF'
+#!/bin/sh
+printf '<%s>\n' "$*" >>"${CLAUDE_YOLO_PROVIDER_OUT:?}"
+case "${1:-}" in
+  status) printf '%s\n' '{"active":false}' ;;
+esac
+EOF
+chmod +x "$BIN/pm-provider"
+export PM_PROVIDER_TOOL="$BIN/pm-provider"
+export CLAUDE_YOLO_PROVIDER_OUT="$PROVIDER_OUT"
+
 (
   cd "$UNKNOWN"
   HOME="$HOME_DIR" \
@@ -48,6 +69,10 @@ chmod +x "$BIN/claude"
 )
 
 [ -x "$HOME_DIR/.claude/bin/claude-pm" ] || fail "Skills were not synchronized before launch"
+grep -Fxq '<status>' "$CAPABILITIES_OUT" ||
+  fail "MiniMax capabilities were not checked before launch"
+! grep -Fxq '<install>' "$CAPABILITIES_OUT" ||
+  fail "normal launch triggered remote capability installation"
 grep -Fxq "PWD=$HUB" "$OUT" || fail "unknown directory did not fall back to Hub"
 grep -Fq '<--permission-mode><bypassPermissions>' "$OUT" || fail "YOLO launch omitted bypass permissions"
 grep -Fq '<--effort><max>' "$OUT" || fail "YOLO launch omitted max effort"
@@ -103,5 +128,21 @@ grep -Fxq 'PM_FEISHU_BOSS=1' "$OUT" || fail "boss mode did not mark the Feishu-f
 grep -Eq '^PM_FEISHU_BOSS_LAUNCH_TOKEN=[0-9a-f-]{36}$' "$OUT" ||
   fail "boss mode did not create a unique launch token"
 grep -Fq '<--name><boss-start>' "$OUT" || fail "boss mode lost Claude arguments"
+
+HOME="$HOME_DIR" \
+PATH="$BIN:$PATH" \
+PM_HUB_HOME="$HUB" \
+CLAUDE_YOLO_TEST_OUT="$OUT" \
+"$YOLO" capabilities install
+grep -Fxq '<install>' "$CAPABILITIES_OUT" ||
+  fail "capabilities install was not routed to the capability tool"
+
+HOME="$HOME_DIR" \
+PATH="$BIN:$PATH" \
+PM_HUB_HOME="$HUB" \
+CLAUDE_YOLO_TEST_OUT="$OUT" \
+"$YOLO" provider status
+grep -Fxq '<status>' "$PROVIDER_OUT" ||
+  fail "provider status was not routed to pm-provider"
 
 echo "PASS: Claude YOLO entrypoint"

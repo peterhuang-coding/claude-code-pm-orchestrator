@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "listen": {
+    "host": "127.0.0.1",
+    "port": 41937
+  },
+  "providers": [
+    {
+      "id": "minimax",
+      "base_url": "https://api.minimaxi.com/anthropic",
+      "model": "MiniMax-M3",
+      "auth_scheme": "x-api-key"
+    },
+    {
+      "id": "glm",
+      "base_url": "https://api.sfkey.cn",
+      "model": "glm-5.2",
+      "auth_scheme": "x-api-key"
+    },
+    {
+      "id": "deepseek",
+      "base_url": "https://api.deepseek.com/anthropic",
+      "model": "deepseek-v4-pro",
+      "auth_scheme": "x-api-key"
+    }
+  ],
+  "retry": {
+    "network": 2,
+    "server": 2
+  },
+  "cooldown_seconds": {
+    "network": 300,
+    "auth": 21600,
+    "quota": 86400,
+    "rate_limit": 1800,
+    "server": 300,
+    "stream": 300
+  }
+}

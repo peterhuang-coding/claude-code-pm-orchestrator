@@ -16,6 +16,7 @@ fail() {
 SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/launch-claude-test.XXXXXX")
 trap 'rm -rf "$SANDBOX"' EXIT HUP INT TERM
 OUT="$SANDBOX/result"
+PROVIDER_OUT="$SANDBOX/provider.out"
 
 cat > "$SANDBOX/claude" <<'EOF'
 #!/bin/sh
@@ -40,8 +41,27 @@ set -eu
 EOF
 chmod +x "$SANDBOX/claude"
 
+cat >"$SANDBOX/pm-provider" <<'EOF'
+#!/bin/sh
+set -eu
+case "$1" in
+  status)
+    printf '{"active":%s}\n' "${PM_TEST_PROVIDER_ACTIVE:-false}"
+    ;;
+  exec)
+    shift
+    printf 'provider-exec=<%s>\n' "$*" >"${PROVIDER_LAUNCH_TEST_OUT:?}"
+    exec "$@"
+    ;;
+  *) exit 2 ;;
+esac
+EOF
+chmod +x "$SANDBOX/pm-provider"
+
 PATH="$SANDBOX:$PATH" \
 CLAUDE_LAUNCH_TEST_OUT="$OUT" \
+PROVIDER_LAUNCH_TEST_OUT="$PROVIDER_OUT" \
+PM_PROVIDER_TOOL="$SANDBOX/pm-provider" \
 ANTHROPIC_AUTH_TOKEN=auth-value \
 CLAUDE_CODE_OAUTH_TOKEN=oauth-value \
 CLAUDE_CODE_EFFORT_LEVEL=xhigh \
@@ -77,23 +97,18 @@ grep -Fq '<--permission-mode><bypassPermissions>' "$OUT" || fail "permission arg
 grep -Fq '<--effort><max>' "$OUT" || fail "max effort argument missing"
 grep -Fq '<--teammate-mode><in-process>' "$OUT" || fail "Agent Team mode argument missing"
 grep -Fq '<--name><test-session>' "$OUT" || fail "session name missing"
+[ ! -e "$PROVIDER_OUT" ] || fail "inactive provider unexpectedly routed Claude"
 
-cat > "$SANDBOX/pm-provider" <<'EOF'
-#!/usr/bin/env python3
-import os
-import sys
-
-if len(sys.argv) < 3 or sys.argv[1] != "exec":
-    raise SystemExit(91)
-os.execvp(sys.argv[2], sys.argv[2:])
-EOF
-chmod +x "$SANDBOX/pm-provider"
 PATH="$SANDBOX:$PATH" \
 CLAUDE_LAUNCH_TEST_OUT="$OUT" \
-PM_PROVIDER_ROUTING=1 \
+PROVIDER_LAUNCH_TEST_OUT="$PROVIDER_OUT" \
 PM_PROVIDER_TOOL="$SANDBOX/pm-provider" \
+PM_TEST_PROVIDER_ACTIVE=true \
 "$LAUNCHER" --name routed-session
-grep -Fq '<--name><routed-session>' "$OUT" || fail "provider-routed launch failed"
+grep -Fq 'provider-exec=<claude --permission-mode bypassPermissions --effort max --teammate-mode in-process --name routed-session>' "$PROVIDER_OUT" ||
+  fail "active provider did not route Claude through provider exec"
+grep -Fq 'ARGS=<--permission-mode><bypassPermissions><--effort><max><--teammate-mode><in-process><--name><routed-session>' "$OUT" ||
+  fail "routed Claude arguments are incorrect"
 
 PROJECT="$SANDBOX/project"
 HUB="$SANDBOX/hub"
@@ -104,6 +119,7 @@ PM_HUB_HOME="$HUB" "$ROOT/.claude/skills/pm-orchestrator/scripts/pm-hub.sh" regi
 PATH="$SANDBOX:$PATH" \
 CLAUDE_LAUNCH_TEST_OUT="$OUT" \
 PM_HUB_HOME="$HUB" \
+PM_PROVIDER_TOOL="$SANDBOX/pm-provider" \
 "$ENTRYPOINT" "$PROJECT" --name cold-start
 
 grep -Fq '<--permission-mode><bypassPermissions>' "$OUT" || fail "cold-start permission mode missing"
@@ -115,11 +131,12 @@ ln -s "$ENTRYPOINT" "$SANDBOX/bin/claude-pm"
 PATH="$SANDBOX:$PATH" \
 CLAUDE_LAUNCH_TEST_OUT="$OUT" \
 PM_HUB_HOME="$HUB" \
+PM_PROVIDER_TOOL="$SANDBOX/pm-provider" \
 "$SANDBOX/bin/claude-pm" "$PROJECT" --name symlink-start
 grep -Fq '<--name><symlink-start><' "$OUT" || fail "symlinked entrypoint failed"
 
 for resume_flag in --continue -c --resume -r --from-pr; do
-  if PATH="$SANDBOX:$PATH" CLAUDE_LAUNCH_TEST_OUT="$OUT" PM_HUB_HOME="$HUB" \
+  if PATH="$SANDBOX:$PATH" CLAUDE_LAUNCH_TEST_OUT="$OUT" PM_HUB_HOME="$HUB" PM_PROVIDER_TOOL="$SANDBOX/pm-provider" \
     "$ENTRYPOINT" "$PROJECT" "$resume_flag" old-session >/dev/null 2>&1
   then
     fail "resume flag was accepted: $resume_flag"

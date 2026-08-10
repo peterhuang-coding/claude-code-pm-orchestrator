@@ -24,6 +24,11 @@ UNKNOWN="$SANDBOX/unknown"
 SETTINGS="$SANDBOX/settings.json"
 DEFAULT_SETTINGS="$SANDBOX/default-settings.json"
 mkdir -p "$PROJECT" "$UNKNOWN"
+cat >"$SANDBOX/pm-provider" <<'EOF'
+#!/bin/sh
+printf '%s\n' '{"active":true,"mode":"auto","current_provider":"minimax","cooldowns":{"glm":{"reason":"server"}},"raw_error":"must-not-leak","secret":"must-not-leak"}'
+EOF
+chmod +x "$SANDBOX/pm-provider"
 
 PM_HUB_HOME="$HUB" "$HUB_TOOL" init >/dev/null
 PM_HUB_HOME="$HUB" "$HUB_TOOL" register "$PROJECT" sample >/dev/null
@@ -36,12 +41,16 @@ FEATURE_ID=$(PM_HUB_HOME="$HUB" PM_HUB_TOOL="$HUB_TOOL" \
   "$FEATURE_TOOL" new tracked-cold-start "$SANDBOX/brief.md" "$PROJECT")
 
 PROJECT_OUT=$(printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s","model":"test-model","session_id":"s1"}\n' "$PROJECT" |
-  PM_HUB_HOME="$HUB" PM_HUB_TOOL="$HUB_TOOL" python3 "$HOOK")
+  PM_HUB_HOME="$HUB" PM_HUB_TOOL="$HUB_TOOL" PM_PROVIDER_TOOL="$SANDBOX/pm-provider" python3 "$HOOK")
 printf '%s' "$PROJECT_OUT" | grep -Fq '"hookEventName": "SessionStart"' || fail "hook output shape is invalid"
 printf '%s' "$PROJECT_OUT" | grep -Fq '"reloadSkills": true' || fail "hook does not reload Skills"
 printf '%s' "$PROJECT_OUT" | grep -Fq '"sessionTitle": "PM: sample"' || fail "project session title missing"
 printf '%s' "$PROJECT_OUT" | grep -Fq 'sample' || fail "project context missing"
 printf '%s' "$PROJECT_OUT" | grep -Fq "$FEATURE_ID" || fail "active Feature missing from cold start"
+printf '%s' "$PROJECT_OUT" | grep -Fq 'Provider routing: mode=auto; current=minimax; cooldowns=glm' ||
+  fail "bounded provider status missing from cold start"
+! printf '%s' "$PROJECT_OUT" | grep -Fq 'must-not-leak' ||
+  fail "provider raw fields leaked into cold start"
 [ "${#PROJECT_OUT}" -le 16000 ] || fail "SessionStart output is unbounded"
 
 AGENT_OUT=$(printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s","agent_type":"review","session_id":"s-agent"}\n' "$PROJECT" |

@@ -12,16 +12,12 @@ export CLAUDE_CODE_DISABLE_THINKING=0
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 export CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=${CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY:-12}
 
-if [ "${PM_PROVIDER_ROUTING:-0}" = 1 ]; then
-  exec python3 "$PROVIDER_TOOL" exec claude \
-    --permission-mode bypassPermissions \
-    --effort max \
-    --teammate-mode in-process \
-    "$@"
+if [ -x "$PROVIDER_TOOL" ] &&
+  "$PROVIDER_TOOL" status --json 2>/dev/null |
+    python3 -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("active") is True else 1)'
+then
+  exec "$PROVIDER_TOOL" exec \
+    claude --permission-mode bypassPermissions --effort max --teammate-mode in-process "$@"
 fi
 
-exec claude \
-  --permission-mode bypassPermissions \
-  --effort max \
-  --teammate-mode in-process \
-  "$@"
+exec claude --permission-mode bypassPermissions --effort max --teammate-mode in-process "$@"
