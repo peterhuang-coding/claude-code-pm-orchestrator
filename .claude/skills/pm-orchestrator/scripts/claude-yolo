@@ -17,6 +17,7 @@ CONFIGURATOR="$SCRIPT_DIR/configure-claude-user.py"
 
 unset PM_FEISHU_BOSS
 unset PM_FEISHU_BOSS_LAUNCH_TOKEN
+export PM_PROVIDER_ROUTING=1
 
 [ -x "$INSTALLER" ] || {
   echo "claude-yolo: PM Orchestrator source is unavailable: $INSTALLER" >&2

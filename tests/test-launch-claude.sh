@@ -78,6 +78,23 @@ grep -Fq '<--effort><max>' "$OUT" || fail "max effort argument missing"
 grep -Fq '<--teammate-mode><in-process>' "$OUT" || fail "Agent Team mode argument missing"
 grep -Fq '<--name><test-session>' "$OUT" || fail "session name missing"
 
+cat > "$SANDBOX/pm-provider" <<'EOF'
+#!/usr/bin/env python3
+import os
+import sys
+
+if len(sys.argv) < 3 or sys.argv[1] != "exec":
+    raise SystemExit(91)
+os.execvp(sys.argv[2], sys.argv[2:])
+EOF
+chmod +x "$SANDBOX/pm-provider"
+PATH="$SANDBOX:$PATH" \
+CLAUDE_LAUNCH_TEST_OUT="$OUT" \
+PM_PROVIDER_ROUTING=1 \
+PM_PROVIDER_TOOL="$SANDBOX/pm-provider" \
+"$LAUNCHER" --name routed-session
+grep -Fq '<--name><routed-session>' "$OUT" || fail "provider-routed launch failed"
+
 PROJECT="$SANDBOX/project"
 HUB="$SANDBOX/hub"
 mkdir -p "$PROJECT"
