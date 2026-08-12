@@ -24,6 +24,7 @@ CAPABILITIES_OUT="$SANDBOX/capabilities.out"
 PROVIDER_OUT="$SANDBOX/provider.out"
 mkdir -p "$HOME_DIR" "$PROJECT" "$UNKNOWN" "$BIN"
 export PM_GLOBAL_BIN="$BIN"
+export PM_MINIMAX_API_KEY=fixed-minimax-key
 
 cat > "$BIN/claude" <<'EOF'
 #!/bin/sh

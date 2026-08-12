@@ -17,13 +17,14 @@ SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/launch-claude-test.XXXXXX")
 trap 'rm -rf "$SANDBOX"' EXIT HUP INT TERM
 OUT="$SANDBOX/result"
 PROVIDER_OUT="$SANDBOX/provider.out"
+export PM_MINIMAX_API_KEY=fixed-minimax-key
 
 cat > "$SANDBOX/claude" <<'EOF'
 #!/bin/sh
 set -eu
 {
   for key in \
-    ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CODE_EFFORT_LEVEL \
+    ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CODE_EFFORT_LEVEL \
     ANTHROPIC_BASE_URL ANTHROPIC_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL \
     ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL \
     CLAUDE_CODE_SUBAGENT_MODEL CLAUDE_MODEL CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY
@@ -76,16 +77,17 @@ CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=9 \
 "$LAUNCHER" --name test-session
 
 for expected in \
-  'ANTHROPIC_AUTH_TOKEN=auth-value' \
-  'CLAUDE_CODE_OAUTH_TOKEN=oauth-value' \
+  'ANTHROPIC_AUTH_TOKEN=<unset>' \
+  'ANTHROPIC_API_KEY=fixed-minimax-key' \
+  'CLAUDE_CODE_OAUTH_TOKEN=<unset>' \
   'CLAUDE_CODE_EFFORT_LEVEL=max' \
-  'ANTHROPIC_BASE_URL=https://provider.example/anthropic' \
-  'ANTHROPIC_MODEL=provider-model' \
-  'ANTHROPIC_DEFAULT_HAIKU_MODEL=provider-haiku' \
-  'ANTHROPIC_DEFAULT_SONNET_MODEL=provider-sonnet' \
-  'ANTHROPIC_DEFAULT_OPUS_MODEL=provider-opus' \
-  'CLAUDE_CODE_SUBAGENT_MODEL=provider-subagent' \
-  'CLAUDE_MODEL=provider-claude' \
+  'ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic' \
+  'ANTHROPIC_MODEL=MiniMax-M3' \
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL=MiniMax-M3' \
+  'ANTHROPIC_DEFAULT_SONNET_MODEL=MiniMax-M3' \
+  'ANTHROPIC_DEFAULT_OPUS_MODEL=MiniMax-M3' \
+  'CLAUDE_CODE_SUBAGENT_MODEL=MiniMax-M3' \
+  'CLAUDE_MODEL=MiniMax-M3' \
   'CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=9'
 do
   grep -Fxq "$expected" "$OUT" || fail "environment changed: $expected"
@@ -97,7 +99,7 @@ grep -Fq '<--permission-mode><bypassPermissions>' "$OUT" || fail "permission arg
 grep -Fq '<--effort><max>' "$OUT" || fail "max effort argument missing"
 grep -Fq '<--teammate-mode><in-process>' "$OUT" || fail "Agent Team mode argument missing"
 grep -Fq '<--name><test-session>' "$OUT" || fail "session name missing"
-[ ! -e "$PROVIDER_OUT" ] || fail "inactive provider unexpectedly routed Claude"
+[ ! -e "$PROVIDER_OUT" ] || fail "fixed MiniMax launch unexpectedly used provider router"
 
 PATH="$SANDBOX:$PATH" \
 CLAUDE_LAUNCH_TEST_OUT="$OUT" \
@@ -105,10 +107,8 @@ PROVIDER_LAUNCH_TEST_OUT="$PROVIDER_OUT" \
 PM_PROVIDER_TOOL="$SANDBOX/pm-provider" \
 PM_TEST_PROVIDER_ACTIVE=true \
 "$LAUNCHER" --name routed-session
-grep -Fq 'provider-exec=<claude --permission-mode bypassPermissions --effort max --teammate-mode in-process --name routed-session>' "$PROVIDER_OUT" ||
-  fail "active provider did not route Claude through provider exec"
 grep -Fq 'ARGS=<--permission-mode><bypassPermissions><--effort><max><--teammate-mode><in-process><--name><routed-session>' "$OUT" ||
-  fail "routed Claude arguments are incorrect"
+  fail "fixed MiniMax Claude arguments are incorrect"
 
 PROJECT="$SANDBOX/project"
 HUB="$SANDBOX/hub"
