@@ -77,8 +77,8 @@ CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY=9 \
 "$LAUNCHER" --name test-session
 
 for expected in \
-  'ANTHROPIC_AUTH_TOKEN=<unset>' \
-  'ANTHROPIC_API_KEY=fixed-minimax-key' \
+  'ANTHROPIC_AUTH_TOKEN=fixed-minimax-key' \
+  'ANTHROPIC_API_KEY=<unset>' \
   'CLAUDE_CODE_OAUTH_TOKEN=<unset>' \
   'CLAUDE_CODE_EFFORT_LEVEL=max' \
   'ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic' \
