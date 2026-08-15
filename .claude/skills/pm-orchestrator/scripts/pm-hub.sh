@@ -70,11 +70,14 @@ write_if_missing() {
 
 init_hub() {
   mkdir -p "$HUB/config" "$HUB/portfolio" "$HUB/projects"
-  : > "$HUB/config/projects.tsv.tmp.$$"
   if [ ! -e "$HUB/config/projects.tsv" ]; then
-    mv -f "$HUB/config/projects.tsv.tmp.$$" "$HUB/config/projects.tsv"
-  else
-    rm -f "$HUB/config/projects.tsv.tmp.$$"
+    REGISTRY_TMP="$HUB/config/projects.tsv.tmp.$$"
+    : > "$REGISTRY_TMP"
+    if [ ! -e "$HUB/config/projects.tsv" ]; then
+      mv -f "$REGISTRY_TMP" "$HUB/config/projects.tsv"
+    else
+      rm -f "$REGISTRY_TMP"
+    fi
   fi
   write_if_missing "$HUB/config/active-profile" "claude-settings"
   write_if_missing "$HUB/portfolio/ideas.md" "# Portfolio Ideas" ""

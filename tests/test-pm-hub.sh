@@ -32,6 +32,12 @@ hub init >/dev/null
 [ -f "$HUB/config/projects.tsv" ] || fail "registry missing"
 [ -f "$HUB/portfolio/ideas.md" ] || fail "portfolio ideas missing"
 
+# Reopening an initialized Hub is a read-only operation. This keeps cold start
+# available when macOS temporarily denies removable-volume writes.
+chmod 0555 "$HUB/config"
+hub init >/dev/null || fail "initialized Hub requires config write access"
+chmod 0755 "$HUB/config"
+
 hub register "$PROJECT_A" alpha >/dev/null
 hub register "$PROJECT_B" beta >/dev/null
 [ "$(hub classify "$PROJECT_A")" = "project	alpha	$PROJECT_A" ] || fail "project classification incorrect"
